@@ -1,0 +1,1 @@
+alter table public.exercises add column if not exists set_details jsonb null;
