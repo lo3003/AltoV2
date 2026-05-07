@@ -48,6 +48,12 @@ export interface WorkoutLog {
   duration_minutes?: number
   calories_burned?: number
   notes?: string
+  rating?: number | null
+  feedback_notes?: string | null
+  confirmation_photo_url?: string | null
+  session_type?: string | null
+  external_name?: string | null
+  external_category?: string | null
   programs?: { name: string }
 }
 

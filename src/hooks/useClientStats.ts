@@ -33,9 +33,17 @@ interface WeeklyWeightPoint {
   deltaKg: number | null
 }
 
+export interface ExternalSessionPayload {
+  name: string
+  category: string
+  durationMinutes: number
+  completedAt: string // ISO datetime
+}
+
 interface ClientStatsData {
   loading: boolean
   savingWeight: boolean
+  savingSession: boolean
   error: string | null
   tableReady: boolean
   weightLogs: ClientWeightLog[]
@@ -44,6 +52,7 @@ interface ClientStatsData {
   thisMonthSessions: number
   latestProgramTitle: string | null
   addWeightLog: (payload: { weightKg: number; measuredAt: string }) => Promise<void>
+  addExternalSession: (payload: ExternalSessionPayload) => Promise<void>
   refetch: () => Promise<void>
 }
 
@@ -93,6 +102,7 @@ const formatWeekLabel = (weekStart: Date) => {
 export function useClientStats(clientId?: string | number | null): ClientStatsData {
   const [loading, setLoading] = useState(true)
   const [savingWeight, setSavingWeight] = useState(false)
+  const [savingSession, setSavingSession] = useState(false)
   const [tableReady, setTableReady] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [weightLogs, setWeightLogs] = useState<ClientWeightLog[]>([])
@@ -233,6 +243,54 @@ export function useClientStats(clientId?: string | number | null): ClientStatsDa
     }
   }, [clientId])
 
+  const addExternalSession = useCallback(async (payload: ExternalSessionPayload) => {
+    if (!clientId) throw new Error('Client introuvable.')
+    if (!payload.name?.trim()) throw new Error('Le nom de la séance est requis.')
+    if (!payload.completedAt) throw new Error('La date de la séance est requise.')
+    if (!Number.isFinite(payload.durationMinutes) || payload.durationMinutes <= 0) {
+      throw new Error('La durée doit être un nombre positif.')
+    }
+
+    setSavingSession(true)
+    try {
+      const baseRow: Record<string, unknown> = {
+        client_id: normalizeId(clientId),
+        program_id: null,
+        completed_at: payload.completedAt,
+        duration_minutes: Math.round(payload.durationMinutes),
+        session_type: 'external',
+        external_name: payload.name.trim(),
+        external_category: payload.category || null,
+      }
+
+      let { error: insertError } = await supabase.from('workout_logs').insert(baseRow)
+
+      // Graceful fallback if migration hasn't been applied yet
+      if (insertError) {
+        const message = String(insertError.message || '').toLowerCase()
+        const code = String(insertError.code || '')
+        const missingColumn =
+          code === 'PGRST204' ||
+          message.includes('session_type') ||
+          message.includes('external_name') ||
+          message.includes('external_category')
+
+        if (missingColumn) {
+          const { session_type, external_name, external_category, ...legacyRow } = baseRow
+          const fallback = await supabase.from('workout_logs').insert(legacyRow)
+          insertError = fallback.error
+        }
+      }
+
+      if (insertError) throw insertError
+
+      // Refetch logs so stats update
+      await fetchData()
+    } finally {
+      setSavingSession(false)
+    }
+  }, [clientId, fetchData])
+
   const thisWeekSessions = useMemo(() => {
     const now = new Date()
     const weekStart = getWeekStart(now)
@@ -308,6 +366,7 @@ export function useClientStats(clientId?: string | number | null): ClientStatsDa
   return {
     loading,
     savingWeight,
+    savingSession,
     error,
     tableReady,
     weightLogs,
@@ -316,6 +375,7 @@ export function useClientStats(clientId?: string | number | null): ClientStatsDa
     thisMonthSessions,
     latestProgramTitle,
     addWeightLog,
+    addExternalSession,
     refetch: fetchData,
   }
 }

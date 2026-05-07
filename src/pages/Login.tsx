@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,18 +10,23 @@ import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react'
 
 export default function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { login, user } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [roleMode, setRoleMode] = useState<'client' | 'coach'>('client')
+  const activationMessage = (location.state as { activationMessage?: string } | null)?.activationMessage
 
-  // If already logged in, redirect
-  if (user) {
+  useEffect(() => {
+    if (!user) return
+
     const path = user.role === 'coach' ? '/coach/dashboard' : '/client/dashboard'
     navigate(path, { replace: true })
-  }
+  }, [user, navigate])
+
+  if (user) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,8 +53,8 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50/50 p-4 lg:p-8">
-      <div className="mx-auto flex w-full max-w-[1200px] overflow-hidden rounded-[2rem] bg-white shadow-2xl shadow-slate-200/50 ring-1 ring-border/50">
+    <div className="flex min-h-[100dvh] bg-slate-50/50 p-0 pt-safe pb-safe lg:p-8">
+      <div className="mx-auto flex w-full max-w-[1200px] overflow-hidden bg-white shadow-2xl shadow-slate-200/50 ring-1 ring-border/50 lg:rounded-[2rem]">
         
         {/* Left Side: Image / Brand Panel (hidden on small screens) */}
         <div className="relative hidden w-1/2 flex-col justify-end overflow-hidden bg-zinc-900 p-12 lg:flex">
@@ -75,7 +80,7 @@ export default function Login() {
         </div>
 
         {/* Right Side: Login Form */}
-        <div className="flex w-full flex-col justify-center px-6 py-12 sm:px-12 lg:w-1/2 lg:px-20">
+        <div className="flex w-full flex-col justify-center px-5 py-8 sm:px-12 sm:py-12 lg:w-1/2 lg:px-20">
           
           {/* Logo */}
           <div className="mb-12 flex items-center gap-2">
@@ -94,6 +99,11 @@ export default function Login() {
             <p className="mt-2 text-sm text-slate-500">
               Veuillez entrer vos identifiants pour accéder à votre espace.
             </p>
+            {activationMessage && (
+              <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                {activationMessage}
+              </p>
+            )}
           </div>
 
           <div className="mt-8">
@@ -107,6 +117,18 @@ export default function Login() {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
+
+            {roleMode === 'client' && (
+              <div className="mt-3 text-right">
+                <button
+                  type="button"
+                  onClick={() => navigate('/activate')}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  J'ai un code client
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="mt-8 space-y-5">
               <div className="space-y-2">
@@ -126,14 +148,9 @@ export default function Login() {
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Mot de passe
-                  </Label>
-                  <button type="button" className="text-xs font-semibold text-primary hover:underline">
-                    Oublié ?
-                  </button>
-                </div>
+                <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Mot de passe
+                </Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -172,7 +189,11 @@ export default function Login() {
           <div className="mt-auto pt-12 text-center">
             <p className="text-sm font-medium text-slate-500">
               Pas encore de compte ?{' '}
-              <button className="text-[#10b981] font-bold hover:underline">
+              <button
+                type="button"
+                onClick={() => navigate('/activate')}
+                className="text-[#10b981] font-bold hover:underline"
+              >
                 S'inscrire gratuitement
               </button>
             </p>

@@ -62,16 +62,22 @@ export function EditClientDialog({ open, client, onOpenChange, onSubmit, isSubmi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl rounded-3xl border-none p-0 shadow-xl overflow-hidden">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle className="text-xl font-bold text-slate-900">Modifier les infos</DialogTitle>
-            <DialogDescription className="text-sm text-slate-500">
+      <DialogContent
+        className="
+          flex flex-col gap-0 border-none p-0 shadow-xl
+          fixed inset-0 left-0 top-0 max-w-none translate-x-0 translate-y-0 rounded-none h-[100dvh] w-full
+          sm:fixed sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-xl sm:h-auto sm:max-h-[90vh] sm:rounded-3xl sm:overflow-hidden
+        "
+      >
+        <form onSubmit={handleSubmit} className="flex h-full flex-col sm:max-h-[90vh]">
+          <DialogHeader className="shrink-0 border-b border-slate-100 bg-white px-5 pt-safe pb-3 sm:border-b-0 sm:px-6 sm:pb-0 sm:pt-6">
+            <DialogTitle className="text-lg font-bold text-slate-900 sm:text-xl">Modifier les infos</DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 sm:text-sm">
               Mettez à jour les informations du client sélectionné.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 px-6 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto grid gap-4 px-5 py-4 sm:px-6 custom-scrollbar">
             <div className="grid gap-2">
               <Label htmlFor="edit-full-name">Nom / Prénom</Label>
               <Input
@@ -212,14 +218,19 @@ export function EditClientDialog({ open, client, onOpenChange, onSubmit, isSubmi
             </div>
           </div>
 
-          <DialogFooter className="mx-0 mb-0 rounded-b-3xl border-slate-100 bg-slate-50/80 px-6 py-4">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="shrink-0 mx-0 mb-0 grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50/80 px-5 py-3 pb-safe sm:flex sm:rounded-b-3xl sm:px-6 sm:py-4 sm:pb-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="h-11 rounded-xl font-bold sm:h-10 sm:font-semibold"
+            >
               Annuler
             </Button>
             <Button
               type="submit"
               disabled={isSubmitting || !client}
-              className="bg-[#10b981] font-bold text-white shadow-sm hover:bg-[#059669]"
+              className="h-11 rounded-xl bg-[#10b981] font-bold text-white shadow-sm hover:bg-[#059669] sm:h-10"
             >
               {isSubmitting ? 'Sauvegarde...' : 'Sauvegarder'}
             </Button>

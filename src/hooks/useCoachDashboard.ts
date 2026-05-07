@@ -41,6 +41,12 @@ export interface WorkoutLog {
   completed_at: string
   duration_minutes?: number
   notes?: string
+  rating?: number | null
+  feedback_notes?: string | null
+  confirmation_photo_url?: string | null
+  session_type?: string | null
+  external_name?: string | null
+  external_category?: string | null
   programs?: { name: string }
   clients?: { full_name: string }
 }

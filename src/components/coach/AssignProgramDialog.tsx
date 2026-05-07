@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Program } from '@/hooks/useCoachPrograms'
 import type { AssignProgramInput } from '@/hooks/useClientProgramAssignments'
@@ -29,6 +30,7 @@ export function AssignProgramDialog({
   const [selectedProgramId, setSelectedProgramId] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [coachInstructions, setCoachInstructions] = useState('')
 
   const availablePrograms = useMemo(() => {
     const assignedSet = new Set(assignedProgramIds.map((id) => String(id)))
@@ -39,6 +41,7 @@ export function AssignProgramDialog({
     setSelectedProgramId('')
     setStartDate('')
     setEndDate('')
+    setCoachInstructions('')
   }
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -68,6 +71,7 @@ export function AssignProgramDialog({
       programId: selectedProgramId,
       startDate,
       endDate,
+      coachInstructions: coachInstructions.trim() || undefined,
     })
   }
 
@@ -125,6 +129,23 @@ export function AssignProgramDialog({
                       required
                     />
                   </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="assign-instructions">
+                    Consigne pour ce client <span className="text-xs font-normal text-slate-400">(optionnel)</span>
+                  </Label>
+                  <Textarea
+                    id="assign-instructions"
+                    value={coachInstructions}
+                    onChange={(event) => setCoachInstructions(event.target.value)}
+                    placeholder="Ex: 3 séances/semaine, échauffement obligatoire 10 min, à adapter si douleur lombaire."
+                    className="min-h-[88px] rounded-xl border-slate-200 bg-white"
+                    maxLength={1000}
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    Cette consigne sera visible par le client dans l'aperçu de son programme.
+                  </p>
                 </div>
               </>
             ) : (

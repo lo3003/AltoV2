@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { Search, Plus, Dumbbell, MoreHorizontal, PlayCircle, Settings2 } from 'lucide-react'
+import { Search, Plus, Dumbbell, PlayCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ExerciseModal } from '@/components/coach/ExerciseModal'
 import { useExerciseLibrary } from '@/hooks/useExerciseLibrary'
@@ -53,34 +53,36 @@ export default function ProgramsPage() {
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-slate-50 relative">
+    <div className="flex flex-col bg-slate-50 relative">
       <CoachHeader
         title="Gestion des Programmes"
         subtitle="Créez des modèles et gérez votre bibliothèque d'exercices."
       />
 
-      <div className="flex-1 overflow-y-auto px-4 py-8 lg:px-8 custom-scrollbar pb-24 lg:pb-8">
-        <div className="mx-auto max-w-7xl space-y-8">
-          
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="px-4 py-5 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-7xl space-y-5 lg:space-y-8">
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center justify-between">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
               <TabsList className="grid w-full grid-cols-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200/60 sm:w-[480px]">
-                <TabsTrigger value="programs" className="rounded-xl text-sm font-bold data-[state=active]:bg-[#10b981]/10 data-[state=active]:text-[#10b981] data-[state=active]:shadow-none">Mes Programmes</TabsTrigger>
-                <TabsTrigger value="library" className="rounded-xl text-sm font-bold data-[state=active]:bg-[#10b981]/10 data-[state=active]:text-[#10b981] data-[state=active]:shadow-none">Bibliothèque d'Exercices</TabsTrigger>
+                <TabsTrigger value="programs" className="rounded-xl text-xs font-bold data-[state=active]:bg-[#10b981]/10 data-[state=active]:text-[#10b981] data-[state=active]:shadow-none sm:text-sm">Programmes</TabsTrigger>
+                <TabsTrigger value="library" className="rounded-xl text-xs font-bold data-[state=active]:bg-[#10b981]/10 data-[state=active]:text-[#10b981] data-[state=active]:shadow-none sm:text-sm">Bibliothèque</TabsTrigger>
               </TabsList>
             </Tabs>
 
             {activeTab === 'programs' ? (
-              <Button 
+              <Button
                 onClick={() => navigate('/coach/programs/builder')}
-                className="bg-[#10b981] font-bold text-white shadow-lg hover:bg-[#059669] rounded-xl gap-2 h-11 px-6"
+                className="bg-[#10b981] font-bold text-white shadow-lg hover:bg-[#059669] rounded-xl gap-2 h-10 px-4 sm:h-11 sm:px-6"
               >
-                <Plus className="h-5 w-5" /> Nouveau Programme
+                <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="hidden sm:inline">Nouveau Programme</span>
+                <span className="sm:hidden">Nouveau</span>
               </Button>
             ) : (
-              <Button 
+              <Button
                 onClick={handleOpenNew}
-                className="bg-[#10b981] font-bold text-white shadow-lg hover:bg-[#059669] rounded-xl gap-2 h-11 px-6"
+                className="bg-[#10b981] font-bold text-white shadow-lg hover:bg-[#059669] rounded-xl gap-2 h-10 px-4 sm:h-11 sm:px-6"
               >
                 <Plus className="h-5 w-5" /> Nouvel Exercice
               </Button>
@@ -94,7 +96,22 @@ export default function ProgramsPage() {
                 {programsLoading ? (
                   <div className="text-slate-500 font-medium text-center p-8 w-full col-span-full">Chargement de vos programmes...</div>
                 ) : programs.length === 0 ? (
-                  <div className="text-slate-500 font-medium text-center p-8 w-full col-span-full border border-dashed rounded-xl bg-white">Vous n'avez pas encore de programme. Utilisez le constructeur pour commencer !</div>
+                  <div className="col-span-full rounded-2xl border-2 border-dashed border-primary/30 bg-white py-12 text-center">
+                    <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Dumbbell className="h-7 w-7" />
+                    </div>
+                    <p className="text-base font-bold text-slate-700">Aucun programme créé</p>
+                    <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
+                      Construis ton premier modèle de programme pour pouvoir l'assigner à tes clients.
+                    </p>
+                    <Button
+                      onClick={() => navigate('/coach/programs/builder')}
+                      className="mt-4 h-11 gap-2 rounded-xl bg-primary font-bold text-white shadow-sm shadow-primary/20 hover:bg-primary/90"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Créer mon premier programme
+                    </Button>
+                  </div>
                 ) : (
                   programs.map(prog => (
                     <div 
@@ -120,15 +137,6 @@ export default function ProgramsPage() {
                       <div className="p-5">
                         <div className="flex justify-between items-start mb-2">
                           <h3 className="font-bold text-slate-900 text-lg group-hover:text-[#10b981] transition-colors line-clamp-2">{prog.name}</h3>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // More options logic here
-                            }}
-                            className="text-slate-400 hover:text-slate-900 transition-colors"
-                          >
-                            <MoreHorizontal className="h-5 w-5" />
-                          </button>
                         </div>
                         
                         <div className="mt-5 flex items-center gap-4 border-t border-slate-100 pt-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -178,9 +186,6 @@ export default function ProgramsPage() {
                     variant={muscleFilter === 'JAMBES' ? 'secondary' : 'outline'} 
                     className={`${muscleFilter === 'JAMBES' ? 'bg-[#10b981]/15 text-[#10b981]' : 'text-slate-600 hover:bg-slate-50'} font-bold px-4 py-1.5 text-xs rounded-xl cursor-pointer`}
                   >JAMBES</Badge>
-                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg shrink-0 sm:ml-2">
-                    <Settings2 className="h-4 w-4 text-slate-600" />
-                  </Button>
                 </div>
               </div>
 

@@ -5,20 +5,24 @@ import { ClientHeader } from '@/components/client/ClientHeader'
 
 export function ClientLayout() {
   return (
-    <div className="min-h-screen bg-slate-50/50">
-      {/* Desktop Sidebar */}
+    <div className="min-h-[100dvh] bg-slate-50/50">
+      {/* Desktop sidebar (hidden on mobile, app uses bottom nav instead) */}
       <ClientSidebar />
 
-      {/* Main content area */}
-      <div className="flex flex-col lg:pl-[220px]">
+      {/* Main column — flush on mobile, padded on desktop */}
+      <div className="flex min-h-[100dvh] flex-col lg:pl-[220px]">
         <ClientHeader />
 
-        <main className="flex-1 px-4 py-5 pb-24 lg:px-6 lg:py-6 lg:pb-6">
+        {/*
+          Bottom padding on mobile = bottom nav height (64px) + safe-area inset.
+          On desktop the bottom nav is hidden so we revert to a normal padding.
+        */}
+        <main className="flex-1 px-4 py-4 with-bottom-nav-spacer lg:px-6 lg:py-6 lg:pb-6">
           <Outlet />
         </main>
       </div>
 
-      {/* Mobile Bottom Nav */}
+      {/* Mobile bottom nav — fixed, includes safe-area inset */}
       <ClientBottomNav />
     </div>
   )

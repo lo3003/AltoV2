@@ -37,6 +37,16 @@ export interface RescheduleSessionByClientInput {
   scheduledDate: string
 }
 
+export interface UpdateSessionByCoachInput {
+  sessionId: string | number
+  programId: string | number
+  scheduledDate: string
+}
+
+export interface CancelSessionByCoachInput {
+  sessionId: string | number
+}
+
 const normalizeId = (value: string | number) => {
   if (typeof value === 'number') return value
   return /^\d+$/.test(value) ? Number(value) : value
@@ -266,6 +276,121 @@ export function useClientCalendar(clientId?: string | number | null) {
     }
   }, [clientId, sessions])
 
+  const updateSessionByCoach = useCallback(async (payload: UpdateSessionByCoachInput) => {
+    if (!clientId) {
+      throw new Error('Client introuvable pour la modification de séance.')
+    }
+
+    setSaving(true)
+    try {
+      const { data, error } = await supabase
+        .from('scheduled_sessions')
+        .update({
+          program_id: normalizeId(payload.programId),
+          coach_scheduled_date: payload.scheduledDate,
+          scheduled_date: payload.scheduledDate,
+          status: 'planned',
+        })
+        .eq('id', normalizeId(payload.sessionId))
+        .eq('client_id', normalizeId(clientId))
+        .select(`
+          id,
+          client_id,
+          program_id,
+          coach_scheduled_date,
+          scheduled_date,
+          status,
+          programs (
+            id,
+            name
+          )
+        `)
+        .single()
+
+      if (error) {
+        if (isMissingScheduledSessionsTableError(error)) {
+          setTableReady(false)
+          throw new Error('La table scheduled_sessions est absente. Exécutez la migration SQL dédiée.')
+        }
+
+        if (error.code === '23505') {
+          throw new Error('Une séance identique existe déjà pour ce programme à cette date.')
+        }
+
+        throw error
+      }
+
+      const nextSession = toScheduledSession(data as ScheduledSessionRow)
+
+      setSessions((prev) => {
+        const updated = prev.map((item) =>
+          String(item.id) === String(nextSession.id) ? nextSession : item
+        )
+        return sortSessions(updated)
+      })
+
+      setTableReady(true)
+
+      return nextSession
+    } finally {
+      setSaving(false)
+    }
+  }, [clientId])
+
+  const cancelSessionByCoach = useCallback(async (payload: CancelSessionByCoachInput) => {
+    if (!clientId) {
+      throw new Error('Client introuvable pour l’annulation de séance.')
+    }
+
+    setSaving(true)
+    try {
+      const { data, error } = await supabase
+        .from('scheduled_sessions')
+        .update({
+          status: 'cancelled',
+        })
+        .eq('id', normalizeId(payload.sessionId))
+        .eq('client_id', normalizeId(clientId))
+        .select(`
+          id,
+          client_id,
+          program_id,
+          coach_scheduled_date,
+          scheduled_date,
+          status,
+          programs (
+            id,
+            name
+          )
+        `)
+        .single()
+
+      if (error) {
+        if (isMissingScheduledSessionsTableError(error)) {
+          setTableReady(false)
+          throw new Error('La table scheduled_sessions est absente. Exécutez la migration SQL dédiée.')
+        }
+
+        throw error
+      }
+
+      const nextSession = toScheduledSession(data as ScheduledSessionRow)
+
+      setSessions((prev) => {
+        const updated = prev.map((item) =>
+          String(item.id) === String(nextSession.id) ? nextSession : item
+        )
+        return sortSessions(updated)
+      })
+
+      setTableReady(true)
+
+      return nextSession
+    } finally {
+      setSaving(false)
+    }
+  }, [clientId])
+
   return {
     sessions,
     loading,
@@ -274,5 +399,7 @@ export function useClientCalendar(clientId?: string | number | null) {
     fetchSessions,
     scheduleSession,
     rescheduleSessionByClient,
+    updateSessionByCoach,
+    cancelSessionByCoach,
   }
 }

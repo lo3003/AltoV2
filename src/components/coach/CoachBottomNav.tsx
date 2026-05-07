@@ -1,13 +1,13 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Home, CalendarDays, Dumbbell, MessageSquare, User } from 'lucide-react'
+import { Home, Users, Dumbbell, BookOpen, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/coach/dashboard', label: 'Accueil', icon: Home },
-  { to: '/coach/agenda', label: 'Agenda', icon: CalendarDays },
-  { to: '/coach/library', label: 'Programmes', icon: Dumbbell },
+  { to: '/coach/clients', label: 'Clients', icon: Users },
+  { to: '/coach/programs', label: 'Programmes', icon: Dumbbell },
+  { to: '/coach/library', label: 'Bibliothèque', icon: BookOpen },
   { to: '/coach/messages', label: 'Messages', icon: MessageSquare },
-  { to: '/coach/settings', label: 'Profil', icon: User },
 ]
 
 export function CoachBottomNav() {

@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Scale, TrendingDown, TrendingUp, CalendarDays, Trophy, Target } from 'lucide-react'
+import { Scale, TrendingDown, TrendingUp, CalendarDays, Trophy, Target, Plus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useClientProfile } from '@/hooks/useClientProfile'
 import { useClientStats } from '@/hooks/useClientStats'
+import { useClientCoachPackage } from '@/hooks/useClientCoachPackage'
+import { AddExternalSessionDialog } from '@/components/client/AddExternalSessionDialog'
+import { CoachHoursCard } from '@/components/client/CoachHoursCard'
 
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear()
@@ -20,17 +23,21 @@ export default function ClientStatsPage() {
   const {
     loading,
     savingWeight,
+    savingSession,
     tableReady,
     weeklyWeightPoints,
     thisWeekSessions,
     thisMonthSessions,
     latestProgramTitle,
     addWeightLog,
+    addExternalSession,
     error,
   } = useClientStats(client?.id)
 
   const [weightInput, setWeightInput] = useState('')
   const [dateInput, setDateInput] = useState(toDateInputValue(new Date()))
+  const [externalSessionOpen, setExternalSessionOpen] = useState(false)
+  const { data: coachPackage, loading: coachPackageLoading } = useClientCoachPackage(client?.id)
 
   const latestPoint = weeklyWeightPoints[weeklyWeightPoints.length - 1] || null
   const previousPoint = weeklyWeightPoints.length > 1 ? weeklyWeightPoints[weeklyWeightPoints.length - 2] : null
@@ -86,26 +93,49 @@ export default function ClientStatsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-foreground lg:text-2xl">Statistiques</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Suivi de ton poids et de ton activité réelle.
-        </p>
+    <div className="mx-auto max-w-5xl space-y-5 lg:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[22px] font-bold leading-tight tracking-tight text-foreground lg:text-2xl">Statistiques</h1>
+          <p className="mt-1 text-[13px] text-muted-foreground lg:text-sm">
+            Suivi de ton poids et de ton activité réelle.
+          </p>
+        </div>
+        <Button
+          onClick={() => setExternalSessionOpen(true)}
+          className="h-11 gap-2 rounded-xl font-bold shadow-sm shadow-primary/20"
+        >
+          <Plus className="h-4 w-4" />
+          Ajouter une séance
+        </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <AddExternalSessionDialog
+        open={externalSessionOpen}
+        onOpenChange={setExternalSessionOpen}
+        onSubmit={addExternalSession}
+        saving={savingSession}
+      />
+
+      <CoachHoursCard
+        loading={coachPackageLoading}
+        totalHours={coachPackage?.totalHours ?? null}
+        remainingHours={coachPackage?.remainingHours ?? null}
+        coachName={coachPackage?.coachName ?? null}
+      />
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:gap-4">
         <StatsCard
-          title="Séances cette semaine"
+          title="Cette semaine"
           value={String(thisWeekSessions)}
           icon={<CalendarDays className="h-4 w-4 text-primary" />}
-          subtitle="séances réalisées"
+          subtitle="séances"
         />
         <StatsCard
-          title="Séances ce mois"
+          title="Ce mois"
           value={String(thisMonthSessions)}
           icon={<Trophy className="h-4 w-4 text-primary" />}
-          subtitle="séances réalisées"
+          subtitle="séances"
         />
         <StatsCard
           title="Dernier programme"
@@ -274,15 +304,25 @@ function StatsCard({
 }) {
   return (
     <Card className="border-border/40 bg-white shadow-sm">
-      <CardContent className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</p>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">{icon}</div>
+      <CardContent className="p-3 lg:p-4">
+        <div className="mb-2 flex items-center justify-between lg:mb-3">
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 lg:text-xs lg:tracking-wider">
+            {title}
+          </p>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 lg:h-8 lg:w-8">
+            {icon}
+          </div>
         </div>
-        <p className={compact ? 'text-base font-bold text-slate-900 line-clamp-1' : 'text-3xl font-bold text-slate-900'}>
+        <p
+          className={
+            compact
+              ? 'line-clamp-1 text-sm font-extrabold text-slate-900 lg:text-base'
+              : 'text-2xl font-extrabold tabular-nums text-slate-900 lg:text-3xl'
+          }
+        >
           {value}
         </p>
-        <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+        <p className="mt-0.5 line-clamp-1 text-[10px] text-slate-500 lg:text-xs">{subtitle}</p>
       </CardContent>
     </Card>
   )

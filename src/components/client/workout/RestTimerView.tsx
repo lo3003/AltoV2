@@ -1,113 +1,205 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Minus, Plus, Pause, Play } from 'lucide-react'
 
-// Convert "01:30" or "90s" to seconds
-const parseDuration = (durationString: string) => {
-  if (!durationString) return 60 // default 60s
-  if (durationString.includes(':')) {
-    const [min, sec] = durationString.split(':')
-    return parseInt(min, 10) * 60 + parseInt(sec, 10)
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+// Convert "01:30" or "90s" or "1m30s" to seconds
+const parseDuration = (input: string): number => {
+  if (!input) return 60
+  const trimmed = input.trim()
+  if (trimmed.includes(':')) {
+    const [m, s] = trimmed.split(':')
+    return Math.max(0, parseInt(m, 10) * 60 + parseInt(s, 10))
   }
-  const minMatch = durationString.match(/(\d+)m/)
-  const secMatch = durationString.match(/(\d+)s/)
+  const minMatch = trimmed.match(/(\d+)\s*m/i)
+  const secMatch = trimmed.match(/(\d+)\s*s/i)
   let total = 0
   if (minMatch) total += parseInt(minMatch[1], 10) * 60
   if (secMatch) total += parseInt(secMatch[1], 10)
-  return total > 0 ? total : parseInt(durationString, 10) || 60
+  if (total > 0) return total
+  const parsed = parseInt(trimmed, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 60
 }
 
-const formatTime = (totalSeconds: number) => {
-  const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0')
-  const s = (totalSeconds % 60).toString().padStart(2, '0')
+const formatTime = (seconds: number) => {
+  const safe = Math.max(0, Math.floor(seconds))
+  const m = Math.floor(safe / 60).toString().padStart(2, '0')
+  const s = (safe % 60).toString().padStart(2, '0')
   return `${m}:${s}`
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Component                                                                  */
+/* -------------------------------------------------------------------------- */
 
 interface RestTimerViewProps {
   duration: string
   nextExerciseName: string
   nextSetIndicator: string
+  nextExercisePhotoUrl?: string | null
   onComplete: () => void
   onSkip: () => void
 }
 
-export function RestTimerView({ duration, nextExerciseName, nextSetIndicator, onComplete, onSkip }: RestTimerViewProps) {
-  const totalDuration = useMemo(() => parseDuration(duration), [duration])
-  const [timeLeft, setTimeLeft] = useState(totalDuration)
+export function RestTimerView({
+  duration,
+  nextExerciseName,
+  nextSetIndicator,
+  onComplete,
+  onSkip,
+}: RestTimerViewProps) {
+  const initialDuration = useMemo(() => parseDuration(duration), [duration])
+  const [totalDuration, setTotalDuration] = useState(initialDuration)
+  const [timeLeft, setTimeLeft] = useState(initialDuration)
+  const [isPaused, setIsPaused] = useState(false)
+  const completedRef = useRef(false)
 
+  // Reset whenever the parent passes a new duration
   useEffect(() => {
+    setTotalDuration(initialDuration)
+    setTimeLeft(initialDuration)
+    setIsPaused(false)
+    completedRef.current = false
+  }, [initialDuration])
+
+  // Tick
+  useEffect(() => {
+    if (isPaused) return
     if (timeLeft <= 0) {
-      onComplete()
+      if (!completedRef.current) {
+        completedRef.current = true
+        onComplete()
+      }
       return
     }
-    const timer = setInterval(() => {
-      setTimeLeft(prev => prev - 1)
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [timeLeft, onComplete])
+    const id = setInterval(() => setTimeLeft((prev) => Math.max(0, prev - 1)), 1000)
+    return () => clearInterval(id)
+  }, [timeLeft, isPaused, onComplete])
 
-  const progress = (timeLeft / totalDuration) * 100
-  // SVG circle calculations
+  const adjust = (delta: number) => {
+    setTimeLeft((prev) => Math.max(0, prev + delta))
+    setTotalDuration((prev) => Math.max(prev, Math.max(1, timeLeft + delta)))
+  }
+
+  const progress = totalDuration > 0 ? (timeLeft / totalDuration) * 100 : 0
+
+  // SVG circle
   const radius = 120
   const circumference = 2 * Math.PI * radius
   const strokeDashoffset = circumference - (progress / 100) * circumference
 
+  const accentColor = timeLeft <= 5 ? '#f59e0b' : '#10b981'
+  const isUrgent = timeLeft <= 5 && timeLeft > 0
+
   return (
-    <div className="absolute inset-0 z-40 bg-[#fbfbfb] flex flex-col items-center justify-between py-12 px-6 safe-area-pt">
-      
-      {/* Header Info */}
-      <div className="text-center mt-8 space-y-2">
-        <p className="text-sm font-bold uppercase tracking-widest text-[#10b981]">Récupération</p>
-        <h2 className="text-3xl font-black text-slate-900">{formatTime(timeLeft)}</h2>
+    <div className="absolute inset-0 z-40 flex flex-col bg-gradient-to-b from-emerald-50 via-white to-white px-6 pt-safe pb-safe">
+      {/* Top label */}
+      <div className="mt-8 text-center">
+        <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-emerald-600">
+          Récupération
+        </p>
+        <p className="mt-1 text-xs font-medium text-slate-500">
+          Repos prévu : {formatTime(totalDuration)}
+        </p>
       </div>
 
-      {/* Big Circular Timer */}
-      <div className="relative flex items-center justify-center flex-1 w-full max-w-[320px]">
-        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 280 280">
-          {/* Background Track */}
-          <circle 
-            cx="140" cy="140" r={radius} 
-            className="stroke-slate-100" 
-            strokeWidth="16" 
-            fill="none" 
-          />
-          {/* Progress Track */}
-          <circle 
-            cx="140" cy="140" r={radius} 
-            className="stroke-[#10b981] transition-all duration-1000 ease-linear" 
-            strokeWidth="16" 
-            fill="none" 
-            strokeLinecap="round"
-            style={{
-              strokeDasharray: circumference,
-              strokeDashoffset: strokeDashoffset
-            }}
-          />
-        </svg>
-        
-        {/* Timer Text inside circle */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-6xl font-black tracking-tighter text-slate-900">{formatTime(timeLeft)}</span>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-2">Temps restant</span>
+      {/* Big circular timer */}
+      <div className="relative flex flex-1 items-center justify-center">
+        <div className={`relative w-full max-w-[300px] aspect-square ${isUrgent ? 'animate-pulse' : ''}`}>
+          <svg className="absolute inset-0 -rotate-90" viewBox="0 0 280 280">
+            <circle
+              cx="140"
+              cy="140"
+              r={radius}
+              className="stroke-slate-100"
+              strokeWidth="14"
+              fill="none"
+            />
+            <circle
+              cx="140"
+              cy="140"
+              r={radius}
+              stroke={accentColor}
+              strokeWidth="14"
+              fill="none"
+              strokeLinecap="round"
+              className="transition-all duration-1000 ease-linear"
+              style={{
+                strokeDasharray: circumference,
+                strokeDashoffset,
+              }}
+            />
+          </svg>
+
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span
+              className="text-[64px] font-black tracking-tighter tabular-nums leading-none"
+              style={{ color: accentColor }}
+            >
+              {formatTime(timeLeft)}
+            </span>
+            <span className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              {isPaused ? 'En pause' : 'Temps restant'}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Next Up Info & Actions */}
-      <div className="w-full space-y-6">
-        <div className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 w-full text-center">
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">À suivre</p>
-          <h3 className="text-xl font-black text-slate-900">{nextExerciseName}</h3>
-          <p className="text-sm font-semibold text-[#10b981] mt-1">{nextSetIndicator}</p>
-        </div>
-
-        <Button 
-          onClick={onSkip}
-          className="w-full h-16 rounded-[24px] bg-[#10b981]/10 text-[#10b981] hover:bg-[#10b981]/20 font-bold text-lg"
+      {/* Adjust controls */}
+      <div className="mb-5 flex items-center justify-center gap-2.5">
+        <Button
+          variant="outline"
+          onClick={() => adjust(-15)}
+          disabled={timeLeft <= 0}
+          className="h-11 px-4 rounded-2xl bg-white border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
         >
-          Passer le repos <ChevronRight className="ml-2 h-5 w-5" />
+          <Minus className="h-3.5 w-3.5" />
+          15s
+        </Button>
+
+        <Button
+          variant="outline"
+          onClick={() => setIsPaused((p) => !p)}
+          className="h-11 w-11 rounded-2xl bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+          aria-label={isPaused ? 'Reprendre' : 'Pause'}
+        >
+          {isPaused ? <Play className="h-4 w-4 fill-current" /> : <Pause className="h-4 w-4" />}
+        </Button>
+
+        <Button
+          variant="outline"
+          onClick={() => adjust(15)}
+          className="h-11 px-4 rounded-2xl bg-white border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          15s
         </Button>
       </div>
 
+      {/* Next exercise card */}
+      <div className="mb-3 rounded-2xl bg-white px-5 py-4 ring-1 ring-slate-200/70 shadow-sm">
+        <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+          À suivre
+        </p>
+        <p className="mt-1 text-lg font-black text-slate-900 truncate">
+          {nextExerciseName}
+        </p>
+        <p className="mt-0.5 text-xs font-bold text-emerald-600">
+          {nextSetIndicator}
+        </p>
+      </div>
+
+      {/* Skip CTA */}
+      <Button
+        onClick={onSkip}
+        className="h-14 w-full rounded-2xl bg-emerald-500 text-base font-extrabold text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-600"
+      >
+        Passer le repos
+        <ChevronRight className="ml-1 h-5 w-5" />
+      </Button>
     </div>
   )
 }

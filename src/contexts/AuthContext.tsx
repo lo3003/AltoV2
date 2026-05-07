@@ -131,29 +131,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const activateClient = async (clientCode: string, password: string) => {
-    // 1. Find the client by code
-    const { data: client, error: clientError } = await supabase
-      .from('clients')
-      .select('id, email, auth_user_id, client_code')
-      .eq('client_code', clientCode)
-      .single()
+    const normalizedCode = clientCode.trim().toUpperCase()
 
-    if (clientError || !client) {
+    if (!normalizedCode) {
+      throw new Error('Code client invalide. Veuillez vérifier votre code.')
+    }
+
+    // 1. Find the client by code
+    const { data: lookupData, error: lookupError } = await supabase
+      .rpc('client_activation_lookup', { p_client_code: normalizedCode })
+      .maybeSingle<{ already_activated?: boolean; email_missing?: boolean; email?: string | null }>()
+
+    if (lookupError) {
+      throw new Error(`Erreur lors de la vérification du code : ${lookupError.message}`)
+    }
+
+    if (!lookupData) {
       throw new Error('Code client invalide. Veuillez vérifier votre code.')
     }
 
     // 2. Check if already activated
-    if (client.auth_user_id) {
+    if (lookupData.already_activated) {
       throw new Error('Ce compte client est déjà activé. Utilisez la connexion classique.')
     }
 
-    if (!client.email) {
+    if (lookupData.email_missing || !lookupData.email) {
       throw new Error('Aucun email associé à ce code client. Contactez votre coach.')
     }
 
     // 3. Create the auth account
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: client.email,
+      email: lookupData.email,
       password,
     })
 
@@ -166,13 +174,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // 4. Update the client row with the new auth_user_id
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update({ auth_user_id: signUpData.user.id })
-      .eq('id', client.id)
+    const { data: bindSuccess, error: bindError } = await supabase
+      .rpc('client_activation_bind', {
+        p_client_code: normalizedCode,
+        p_auth_user_id: signUpData.user.id,
+      })
 
-    if (updateError) {
-      throw new Error(`Erreur lors de la liaison du compte : ${updateError.message}`)
+    if (bindError) {
+      throw new Error(`Erreur lors de la liaison du compte : ${bindError.message}`)
+    }
+
+    if (!bindSuccess) {
+      throw new Error('Le compte client est introuvable ou déjà activé. Contactez votre coach.')
     }
   }
 

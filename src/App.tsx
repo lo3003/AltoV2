@@ -5,6 +5,7 @@ import { ClientLayout } from '@/components/layouts/ClientLayout'
 import { CoachLayout } from '@/components/layouts/CoachLayout'
 import { Toaster } from '@/components/ui/sonner'
 import Login from '@/pages/Login'
+import ActivateAccount from '@/pages/ActivateAccount'
 import CoachDashboard from '@/pages/coach/Dashboard'
 import ClientsPage from '@/pages/coach/Clients'
 import ClientDetail from '@/pages/coach/ClientDetail'
@@ -16,6 +17,8 @@ import ClientDashboard from '@/pages/client/Dashboard'
 import ClientPlanningPage from '@/pages/client/Planning'
 import ClientMessagesPage from '@/pages/client/Messages'
 import ClientStatsPage from '@/pages/client/Stats'
+import ClientCoachPage from '@/pages/client/Coach'
+import WorkoutPreview from '@/pages/client/workout/WorkoutPreview'
 import ActiveWorkout from '@/pages/client/workout/ActiveWorkout'
 
 export default function App() {
@@ -25,6 +28,7 @@ export default function App() {
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/activate" element={<ActivateAccount />} />
 
           {/* Protected Coach routes with Layout */}
           <Route element={<ProtectedRoute allowedRole="coach" />}>
@@ -47,10 +51,12 @@ export default function App() {
               <Route path="/client/planning" element={<ClientPlanningPage />} />
               <Route path="/client/messages" element={<ClientMessagesPage />} />
               <Route path="/client/stats" element={<ClientStatsPage />} />
+              <Route path="/client/coach" element={<ClientCoachPage />} />
             </Route>
             
             {/* Fullscreen Client Routes WITHOUT Layout */}
-            <Route path="/client/workout/:programId" element={<ActiveWorkout />} />
+            <Route path="/client/workout/:programId" element={<WorkoutPreview />} />
+            <Route path="/client/workout/:programId/active" element={<ActiveWorkout />} />
 
           </Route>
 

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, Dumbbell } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { CoachHeader } from '@/components/coach/CoachHeader'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ExerciseImage } from '@/components/ui/exercise-image'
 import {
   Select,
   SelectContent,
@@ -22,76 +23,99 @@ const DEFAULT_FILTERS = {
   bodyPart: 'all',
 }
 
+const STORAGE_KEY_PREFIX = 'alto:coach:exercise-library:filters'
+
 function getStorageKey(userId: string) {
-  return `alto:coach:exercise-library:filters:${userId}`
+  return `${STORAGE_KEY_PREFIX}:${userId}`
+}
+
+/**
+ * Read persisted filters synchronously, prioritizing URL params (for share links)
+ * then falling back to localStorage. Runs at mount time to avoid the "empty filter flash".
+ */
+function readInitialFilters(userId: string | undefined, search: string) {
+  // Server-side / SSR safety
+  if (typeof window === 'undefined') return DEFAULT_FILTERS
+
+  const params = new URLSearchParams(search)
+  const urlQuery = params.get('q') || ''
+  const urlType = params.get('type') || ''
+  const urlBodyPart = params.get('body') || ''
+  if (urlQuery || urlType || urlBodyPart) {
+    return {
+      query: urlQuery,
+      type: urlType || DEFAULT_FILTERS.type,
+      bodyPart: urlBodyPart || DEFAULT_FILTERS.bodyPart,
+    }
+  }
+
+  if (!userId) return DEFAULT_FILTERS
+
+  try {
+    const raw = window.localStorage.getItem(getStorageKey(userId))
+    if (!raw) return DEFAULT_FILTERS
+    const parsed = JSON.parse(raw) as Partial<typeof DEFAULT_FILTERS>
+    return {
+      query: parsed.query ?? DEFAULT_FILTERS.query,
+      type: parsed.type ?? DEFAULT_FILTERS.type,
+      bodyPart: parsed.bodyPart ?? DEFAULT_FILTERS.bodyPart,
+    }
+  } catch {
+    return DEFAULT_FILTERS
+  }
 }
 
 export default function CoachExerciseLibraryPage() {
   const { user } = useAuth()
   const { exercises, loading } = useExerciseLibrary()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [, setSearchParams] = useSearchParams()
 
-  const [query, setQuery] = useState(DEFAULT_FILTERS.query)
-  const [typeFilter, setTypeFilter] = useState(DEFAULT_FILTERS.type)
-  const [bodyPartFilter, setBodyPartFilter] = useState(DEFAULT_FILTERS.bodyPart)
-  const [isHydrated, setIsHydrated] = useState(false)
+  // Lazy initialization — synchronously reads URL+localStorage so filters
+  // are restored on the very first render (no empty flash, no remounting reset).
+  const initial = useState(() =>
+    readInitialFilters(user?.id, typeof window !== 'undefined' ? window.location.search : '')
+  )[0]
+  const [query, setQuery] = useState(initial.query)
+  const [typeFilter, setTypeFilter] = useState(initial.type)
+  const [bodyPartFilter, setBodyPartFilter] = useState(initial.bodyPart)
 
-  const hydratedForUserRef = useRef<string | null>(null)
-
+  // If the user becomes available *after* mount (auth loading finishes),
+  // re-hydrate once for that specific userId.
+  const hydratedForUserRef = useRef<string | null>(user?.id ?? null)
   useEffect(() => {
     if (!user?.id) return
     if (hydratedForUserRef.current === user.id) return
-
-    const urlQuery = searchParams.get('q') || ''
-    const urlType = searchParams.get('type') || ''
-    const urlBodyPart = searchParams.get('body') || ''
-    const hasUrlFilters = Boolean(urlQuery || urlType || urlBodyPart)
-
-    if (hasUrlFilters) {
-      setQuery(urlQuery)
-      setTypeFilter(urlType || DEFAULT_FILTERS.type)
-      setBodyPartFilter(urlBodyPart || DEFAULT_FILTERS.bodyPart)
-    } else {
-      const raw = localStorage.getItem(getStorageKey(user.id))
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as Partial<typeof DEFAULT_FILTERS>
-          setQuery(parsed.query ?? DEFAULT_FILTERS.query)
-          setTypeFilter(parsed.type ?? DEFAULT_FILTERS.type)
-          setBodyPartFilter(parsed.bodyPart ?? DEFAULT_FILTERS.bodyPart)
-        } catch {
-          setQuery(DEFAULT_FILTERS.query)
-          setTypeFilter(DEFAULT_FILTERS.type)
-          setBodyPartFilter(DEFAULT_FILTERS.bodyPart)
-        }
-      }
-    }
-
+    const restored = readInitialFilters(user.id, window.location.search)
+    setQuery(restored.query)
+    setTypeFilter(restored.type)
+    setBodyPartFilter(restored.bodyPart)
     hydratedForUserRef.current = user.id
-    setIsHydrated(true)
-  }, [user?.id, searchParams])
+  }, [user?.id])
 
+  // Persist on every change (URL + localStorage)
   useEffect(() => {
-    if (!user?.id || !isHydrated) return
+    if (!user?.id) return
 
     const trimmedQuery = query.trim()
     const next = new URLSearchParams()
-
     if (trimmedQuery) next.set('q', trimmedQuery)
     if (typeFilter !== DEFAULT_FILTERS.type) next.set('type', typeFilter)
     if (bodyPartFilter !== DEFAULT_FILTERS.bodyPart) next.set('body', bodyPartFilter)
-
     setSearchParams(next, { replace: true })
 
-    localStorage.setItem(
-      getStorageKey(user.id),
-      JSON.stringify({
-        query,
-        type: typeFilter,
-        bodyPart: bodyPartFilter,
-      })
-    )
-  }, [user?.id, isHydrated, query, typeFilter, bodyPartFilter, setSearchParams])
+    try {
+      window.localStorage.setItem(
+        getStorageKey(user.id),
+        JSON.stringify({
+          query,
+          type: typeFilter,
+          bodyPart: bodyPartFilter,
+        })
+      )
+    } catch {
+      // localStorage unavailable (private mode, quota exceeded) — silently ignore
+    }
+  }, [user?.id, query, typeFilter, bodyPartFilter, setSearchParams])
 
   const typeOptions = useMemo(() => {
     return Array.from(
@@ -132,14 +156,14 @@ export default function CoachExerciseLibraryPage() {
     || bodyPartFilter !== DEFAULT_FILTERS.bodyPart
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-slate-50">
+    <div className="flex flex-col bg-slate-50">
       <CoachHeader
         title="Bibliothèque d'exercices"
         subtitle="Recherchez rapidement des exercices par type ou zone ciblée."
       />
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 lg:px-8 custom-scrollbar pb-24 lg:pb-8">
-        <div className="mx-auto max-w-7xl space-y-6">
+      <div className="px-4 py-5 lg:px-8 lg:py-6">
+        <div className="mx-auto max-w-7xl space-y-5 lg:space-y-6">
           <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/60">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <div className="relative w-full lg:max-w-sm">
@@ -219,18 +243,12 @@ export default function CoachExerciseLibraryPage() {
                 <Card key={exercise.id} className="border-none bg-white p-4 shadow-sm ring-1 ring-slate-200/60">
                   <div className="flex items-center gap-3">
                     <div className="h-14 w-14 overflow-hidden rounded-xl border border-slate-200/60 bg-slate-100">
-                      {exercise.photo_url ? (
-                        <img
-                          src={exercise.photo_url}
-                          alt={exercise.name}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <Dumbbell className="h-6 w-6 text-slate-400" />
-                        </div>
-                      )}
+                      <ExerciseImage
+                        src={exercise.photo_url}
+                        alt={exercise.name}
+                        className="h-full w-full object-cover"
+                        fallbackClassName="h-full w-full"
+                      />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -243,11 +261,6 @@ export default function CoachExerciseLibraryPage() {
                     {exercise.type && (
                       <Badge variant="secondary" className="bg-slate-100 text-slate-600">
                         {exercise.type}
-                      </Badge>
-                    )}
-                    {exercise.intensity && (
-                      <Badge variant="secondary" className="bg-slate-100 text-slate-600">
-                        {exercise.intensity}
                       </Badge>
                     )}
                   </div>

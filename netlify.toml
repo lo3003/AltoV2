@@ -1,0 +1,62 @@
+[build]
+  command   = "npm run build"
+  publish   = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# -----------------------------------------------------------------------------
+# SPA fallback — toutes les routes inconnues servent index.html
+# Indispensable pour React Router (refresh sur /coach/clients/123 etc.)
+# -----------------------------------------------------------------------------
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# -----------------------------------------------------------------------------
+# Cache headers
+# -----------------------------------------------------------------------------
+
+# Le service worker NE DOIT JAMAIS être caché par le navigateur ou un CDN,
+# sinon les users restent bloqués sur une ancienne version.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Le manifest peut changer (icônes, name) → revalidation systématique
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    Content-Type  = "application/manifest+json"
+
+# Les assets buildés par Vite ont un hash dans le nom (index-D7b2.css),
+# on peut les cacher 1 an sans risque.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# index.html : jamais en cache (point d'entrée)
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# -----------------------------------------------------------------------------
+# Security headers (basiques, non bloquants)
+# -----------------------------------------------------------------------------
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+    Permissions-Policy     = "camera=(), microphone=(), geolocation=()"

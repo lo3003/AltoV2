@@ -1,10 +1,11 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Home, BarChart3, CalendarDays, MessageSquare } from 'lucide-react'
+import { Home, BarChart3, CalendarDays, MessageSquare, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/client/dashboard', label: 'Accueil', icon: Home },
   { to: '/client/planning', label: 'Planning', icon: CalendarDays },
+  { to: '/client/coach', label: 'Coach', icon: UserRound },
   { to: '/client/messages', label: 'Messages', icon: MessageSquare },
   { to: '/client/stats', label: 'Stats', icon: BarChart3 },
 ]

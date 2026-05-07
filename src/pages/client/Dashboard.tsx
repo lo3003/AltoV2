@@ -104,19 +104,24 @@ export default function ClientDashboard() {
   })()
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-5 lg:space-y-6">
       {/* Greeting */}
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-foreground lg:text-2xl">
-          Prêt pour ta séance du jour, {firstName} ?
+        <h1 className="text-[22px] font-bold leading-tight tracking-tight text-foreground lg:text-2xl">
+          Prêt pour ta séance, {firstName} ?
         </h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
+        <p className="mt-1 text-[13px] text-muted-foreground lg:text-sm">
           {subtitle}
         </p>
       </div>
 
+      {/*
+        ── Mobile-first layout (single column on small screens) ──
+        On mobile we keep only the essentials and reorder for hierarchy.
+        On lg+ we restore the historical 2/3-1/3 grid.
+      */}
       <div className="grid gap-5 lg:grid-cols-3">
-        {/* Left + Center column (main content) */}
+        {/* MAIN COLUMN */}
         <div className="space-y-5 lg:col-span-2">
           {/* Hero Workout Card */}
           {heroProgram ? (
@@ -137,13 +142,29 @@ export default function ClientDashboard() {
             activeProgram={activeProgram}
           />
 
-          {/* Coach Virtual Banner */}
-          <CoachBanner nextSession={nextScheduledSession} />
+          {/* Mobile-only: Upcoming sessions appears here for hierarchy */}
+          <div className="lg:hidden">
+            <UpcomingSessions
+              sessions={scheduledSessions}
+              loading={scheduledSessionsLoading}
+              tableReady={isScheduledSessionsReady}
+              assignedPrograms={assignedPrograms}
+            />
+          </div>
+
+          {/* Coach banner (desktop) — hidden on mobile to reduce noise */}
+          <div className="hidden lg:block">
+            <CoachBanner nextSession={nextScheduledSession} />
+          </div>
+
+          {/* Mobile-only: Recent activity (compact) */}
+          <div className="lg:hidden">
+            <RecentActivity logs={workoutLogs.slice(0, 3)} />
+          </div>
         </div>
 
-        {/* Right column */}
-        <div className="space-y-5">
-          {/* Upcoming Sessions */}
+        {/* RIGHT COLUMN — desktop only */}
+        <div className="hidden space-y-5 lg:block">
           <UpcomingSessions
             sessions={scheduledSessions}
             loading={scheduledSessionsLoading}
@@ -151,13 +172,11 @@ export default function ClientDashboard() {
             assignedPrograms={assignedPrograms}
           />
 
-          {/* Coach Tip */}
           <CoachTip
             thisWeekWorkouts={thisWeekWorkouts}
             thisWeekScheduledWorkouts={thisWeekScheduledSessions.length}
           />
 
-          {/* Recent Activity */}
           <RecentActivity logs={workoutLogs.slice(0, 3)} />
         </div>
       </div>
@@ -261,18 +280,36 @@ function ActiveWorkoutCard({
 }
 
 function EmptyProgramState() {
+  const navigate = useNavigate()
   return (
-    <Card className="border-dashed border-border/60 bg-white">
-      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+    <Card className="border-dashed border-primary/30 bg-white">
+      <CardContent className="flex flex-col items-center justify-center py-10 text-center">
         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
           <Sparkles className="h-8 w-8 text-primary" />
         </div>
-        <h3 className="text-lg font-semibold text-foreground">
-          Votre coach vous prépare un programme…
+        <h3 className="text-lg font-bold text-foreground">
+          Pas encore de programme assigné
         </h3>
         <p className="mt-2 max-w-xs text-sm text-muted-foreground">
-          Vous serez notifié dès qu'un nouveau programme sera disponible. En attendant, restez motivé !
+          Tu peux demander un programme personnalisé à ton coach en quelques secondes.
         </p>
+        <div className="mt-5 flex w-full max-w-xs flex-col gap-2 sm:flex-row">
+          <Button
+            onClick={() => navigate('/client/coach')}
+            className="h-11 flex-1 gap-1.5 rounded-xl bg-primary font-bold shadow-sm shadow-primary/20 hover:bg-primary/90"
+          >
+            <Sparkles className="h-4 w-4" />
+            Demander un programme
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => navigate('/client/messages')}
+            className="h-11 flex-1 gap-1.5 rounded-xl border-primary/30 font-bold text-primary hover:bg-primary/5"
+          >
+            <MessageCircle className="h-4 w-4" />
+            Message
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )
@@ -323,27 +360,30 @@ function WeeklyProgressSection({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Ton évolution cette semaine</h3>
-        <button className="text-xs font-medium text-primary hover:underline">Voir plus</button>
+      <div className="mb-3">
+        <h3 className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500 lg:text-sm lg:font-semibold lg:normal-case lg:tracking-normal lg:text-foreground">
+          Ton évolution cette semaine
+        </h3>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2 lg:gap-3">
         {stats.map((stat) => (
           <Card key={stat.label} className="border-border/40 bg-white shadow-sm transition-shadow hover:shadow-md">
-            <CardContent className="p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                  <stat.icon className="h-4 w-4 text-primary" />
+            <CardContent className="p-3 lg:p-4">
+              <div className="mb-2 flex items-center justify-between lg:mb-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 lg:h-8 lg:w-8">
+                  <stat.icon className="h-3.5 w-3.5 text-primary lg:h-4 lg:w-4" />
                 </div>
                 {stat.trend && (
-                  <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary text-[10px]">
+                  <Badge variant="outline" className="hidden border-primary/20 bg-primary/5 text-primary text-[10px] lg:inline-flex">
                     <TrendingUp className="mr-0.5 h-3 w-3" />
                     En hausse
                   </Badge>
                 )}
               </div>
-              <p className="text-2xl font-bold tracking-tight text-foreground">{stat.value}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{stat.sub}</p>
+              <p className="text-xl font-extrabold tabular-nums tracking-tight text-foreground lg:text-2xl">
+                {stat.value}
+              </p>
+              <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground lg:text-xs">{stat.sub}</p>
             </CardContent>
           </Card>
         ))}
@@ -421,9 +461,20 @@ function UpcomingSessions({
               Planification indisponible pour le moment.
             </p>
           ) : upcoming.length === 0 ? (
-            <p className="rounded-xl bg-muted/40 px-3 py-3 text-xs text-muted-foreground">
-              Aucune séance planifiée à venir.
-            </p>
+            <div className="rounded-xl border border-dashed border-primary/30 bg-primary/[0.03] px-3 py-4 text-center">
+              <p className="text-xs text-muted-foreground">
+                Aucune séance planifiée à venir.
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => window.location.assign('/client/planning')}
+                className="mt-2 h-8 gap-1 text-xs font-bold text-primary hover:bg-primary/10"
+              >
+                <Calendar className="h-3 w-3" />
+                Voir mon planning
+              </Button>
+            </div>
           ) : (
             upcoming.map((session) => {
               const date = dateFromKey(session.scheduled_date)
@@ -553,15 +604,25 @@ function CoachBanner({ nextSession }: { nextSession: ScheduledSession | null }) 
             </p>
           </div>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={!nextSession}
-          onClick={() => nextSession && navigate(`/client/workout/${nextSession.program_id}`)}
-          className="bg-white text-primary font-semibold shadow-sm hover:bg-white/90"
-        >
-          {nextSession ? 'Lancer' : 'En attente'}
-        </Button>
+        {nextSession ? (
+          <Button
+            size="sm"
+            onClick={() => navigate(`/client/workout/${nextSession.program_id}`)}
+            className="h-10 bg-white text-primary font-bold shadow-sm hover:bg-white/90 gap-1.5"
+          >
+            <Play className="h-3.5 w-3.5 fill-current" />
+            Lancer
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            onClick={() => navigate('/client/coach')}
+            className="h-10 bg-white text-primary font-bold shadow-sm hover:bg-white/90 gap-1.5"
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            Demander
+          </Button>
+        )}
       </CardContent>
     </Card>
   )
@@ -605,6 +666,7 @@ function CoachTip({
 }
 
 function RecentActivity({ logs }: { logs: WorkoutLog[] }) {
+  const navigate = useNavigate()
   if (logs.length === 0) return null
 
   return (
@@ -617,33 +679,46 @@ function RecentActivity({ logs }: { logs: WorkoutLog[] }) {
           </span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2 px-4 pb-4">
-        {logs.map((log) => {
-          const date = new Date(log.completed_at)
-          const timeAgo = getTimeAgo(date)
+      <CardContent className="space-y-2 px-3 pb-4 max-h-[360px] overflow-y-auto custom-scrollbar">
+        {logs.length === 0 ? (
+          <p className="rounded-xl bg-muted/40 px-3 py-3 text-center text-xs text-muted-foreground">
+            Pas encore d'activité enregistrée.
+          </p>
+        ) : (
+          logs.map((log) => {
+            const date = new Date(log.completed_at)
+            const timeAgo = getTimeAgo(date)
+            const canRelaunch = !!log.program_id
 
-          return (
-            <div
-              key={log.id}
-              className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                <Dumbbell className="h-3.5 w-3.5 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="truncate text-xs font-medium text-foreground">
-                  {log.programs?.name || 'Séance'}
-                </p>
-                <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
-              </div>
-              {log.duration_minutes && (
-                <span className="text-[10px] font-medium text-muted-foreground">
-                  {log.duration_minutes} min
-                </span>
-              )}
-            </div>
-          )
-        })}
+            return (
+              <button
+                key={log.id}
+                type="button"
+                onClick={() => canRelaunch && navigate(`/client/workout/${log.program_id}`)}
+                disabled={!canRelaunch}
+                className="group flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-primary/5 disabled:cursor-default disabled:hover:bg-transparent"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                  <Dumbbell className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-xs font-semibold text-foreground">
+                    {log.programs?.name || 'Séance'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{timeAgo}</p>
+                </div>
+                {log.duration_minutes ? (
+                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                    {log.duration_minutes} min
+                  </span>
+                ) : null}
+                {canRelaunch && (
+                  <ChevronRight className="h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                )}
+              </button>
+            )
+          })
+        )}
       </CardContent>
     </Card>
   )

@@ -1,9 +1,12 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export interface ProgramDetails {
   id: string
   name: string
+  description?: string | null
+  session_instructions?: string | null
+  estimated_duration_minutes?: number | null
 }
 
 export interface WorkoutExercise {
@@ -30,17 +33,38 @@ export interface WorkoutExercise {
   reps_max?: number | null
   parent_exercise_id?: string | null
   is_section_header?: boolean
+  tabata_work?: number | null
+  tabata_rest?: number | null
+  amrap_duration?: number | null
+}
+
+export type WorkoutExecutionMode = 'Classic' | 'Superset' | 'Circuit' | 'AMRAP' | 'EMOM' | 'Tabata'
+
+export interface WorkoutExerciseBlock {
+  id: string
+  supersetId: string | null
+  mode: WorkoutExecutionMode
+  exercises: WorkoutExercise[]
+  rounds: number
 }
 
 export interface UseActiveWorkoutReturn {
   program: ProgramDetails | null
   exercises: WorkoutExercise[]
+  blocks: WorkoutExerciseBlock[]
   loading: boolean
   error: string | null
   
   // State
+  currentBlockIndex: number
+  currentBlock: WorkoutExerciseBlock | null
   currentExerciseIndex: number
+  currentExerciseInBlockIndex: number
+  currentRound: number
   currentSetIndex: number
+  blockRoundCount: number
+  executionMode: WorkoutExecutionMode
+  isTimedMode: boolean
   isResting: boolean
   isFinished: boolean
   wasStoppedEarly: boolean
@@ -52,18 +76,111 @@ export interface UseActiveWorkoutReturn {
   nextSet: () => void
   finishRest: () => void
   selectExercise: (index: number) => void
+  completeTimedBlock: () => void
+  setTimedExerciseIndex: (index: number) => void
   endWorkout: (stoppedEarly?: boolean) => void
+}
+
+const toSetsCount = (value?: string | number | null) => {
+  const numeric = Number(value)
+  if (Number.isFinite(numeric) && numeric > 0) return Math.floor(numeric)
+  return 1
+}
+
+const normalizeExecutionMode = (mode?: string | null): WorkoutExecutionMode => {
+  const normalized = String(mode || '').trim().toLowerCase()
+
+  if (normalized === 'circuit' || normalized.includes('circuit')) return 'Circuit'
+  if (normalized === 'amrap' || normalized.includes('amrap')) return 'AMRAP'
+  if (normalized === 'emom' || normalized.includes('emom')) return 'EMOM'
+  if (normalized === 'tabata' || normalized.includes('tabata')) return 'Tabata'
+  return 'Superset'
+}
+
+const isTimedExecutionMode = (mode: WorkoutExecutionMode) => {
+  return mode === 'AMRAP' || mode === 'EMOM' || mode === 'Tabata'
+}
+
+const toNullableString = (value: unknown) => {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+const toNullableInt = (value: unknown) => {
+  if (value === null || value === undefined) return null
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return null
+  return Math.floor(numeric)
+}
+
+const toSortedExercises = (items: WorkoutExercise[]) => {
+  return [...items].sort((left, right) => (left.order || 0) - (right.order || 0))
+}
+
+const buildExerciseBlocks = (inputExercises: WorkoutExercise[]): WorkoutExerciseBlock[] => {
+  const sorted = toSortedExercises(inputExercises)
+  const handledSupersetIds = new Set<string>()
+  const blocks: WorkoutExerciseBlock[] = []
+
+  sorted.forEach((exercise) => {
+    const supersetId = exercise.superset_id ? String(exercise.superset_id) : null
+
+    if (!supersetId) {
+      blocks.push({
+        id: `single-${exercise.id}`,
+        supersetId: null,
+        mode: 'Classic',
+        exercises: [exercise],
+        rounds: toSetsCount(exercise.sets),
+      })
+      return
+    }
+
+    if (handledSupersetIds.has(supersetId)) return
+
+    handledSupersetIds.add(supersetId)
+    const groupedExercises = sorted.filter((item) => String(item.superset_id || '') === supersetId)
+
+    if (groupedExercises.length <= 1) {
+      blocks.push({
+        id: `single-${exercise.id}`,
+        supersetId,
+        mode: 'Classic',
+        exercises: [exercise],
+        rounds: toSetsCount(exercise.sets),
+      })
+      return
+    }
+
+    const mode = normalizeExecutionMode(exercise.execution_mode || exercise.type)
+    const rounds = groupedExercises.reduce((maximum, item) => {
+      return Math.max(maximum, toSetsCount(item.sets))
+    }, 1)
+
+    blocks.push({
+      id: `group-${supersetId}`,
+      supersetId,
+      mode,
+      exercises: groupedExercises,
+      rounds,
+    })
+  })
+
+  return blocks
 }
 
 export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {  
   const [program, setProgram] = useState<ProgramDetails | null>(null)
   const [exercises, setExercises] = useState<WorkoutExercise[]>([])
+  const [blocks, setBlocks] = useState<WorkoutExerciseBlock[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Execution State
-  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0)
-  const [currentSetIndex, setCurrentSetIndex] = useState(0)
+  const [currentBlockIndex, setCurrentBlockIndex] = useState(0)
+  const [currentExerciseInBlockIndex, setCurrentExerciseInBlockIndex] = useState(0)
+  const [currentRound, setCurrentRound] = useState(1)
   const [isResting, setIsResting] = useState(false)
   const [isFinished, setIsFinished] = useState(false)
   const [wasStoppedEarly, setWasStoppedEarly] = useState(false)
@@ -71,22 +188,72 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null)
   const [sessionEndTime, setSessionEndTime] = useState<Date | null>(null)
 
+  const currentBlock = useMemo(() => blocks[currentBlockIndex] || null, [blocks, currentBlockIndex])
+  const currentExercise = useMemo(() => {
+    if (!currentBlock) return null
+    return currentBlock.exercises[currentExerciseInBlockIndex] || currentBlock.exercises[0] || null
+  }, [currentBlock, currentExerciseInBlockIndex])
+
+  const currentExerciseIndex = useMemo(() => {
+    if (!currentExercise) return 0
+    const foundIndex = exercises.findIndex((exercise) => String(exercise.id) === String(currentExercise.id))
+    return foundIndex >= 0 ? foundIndex : 0
+  }, [currentExercise, exercises])
+
+  const executionMode: WorkoutExecutionMode = currentBlock?.mode || 'Classic'
+  const isTimedMode = isTimedExecutionMode(executionMode)
+  const blockRoundCount = currentBlock?.rounds || 1
+  const currentSetIndex = Math.max(0, currentRound - 1)
+
+  const markBlockAsCompleted = useCallback((blockToComplete: WorkoutExerciseBlock | null) => {
+    if (!blockToComplete) return
+    setCompletedExercises((previous) => {
+      const next = new Set(previous)
+      blockToComplete.exercises.forEach((exercise) => {
+        next.add(String(exercise.id))
+      })
+      return next
+    })
+  }, [])
+
+  const moveToNextBlock = useCallback((fromBlockIndex: number) => {
+    if (fromBlockIndex >= blocks.length - 1) {
+      setIsFinished(true)
+      setWasStoppedEarly(false)
+      setSessionEndTime(new Date())
+      return
+    }
+
+    setCurrentBlockIndex(fromBlockIndex + 1)
+    setCurrentExerciseInBlockIndex(0)
+    setCurrentRound(1)
+    setIsResting(false)
+  }, [blocks.length])
+
   const fetchWorkoutData = useCallback(async () => {
     if (!programId) return
     setLoading(true)
     setError(null)
     try {
-      // 1. Fetch Program info
-      const { data: programData, error: programError } = await supabase
+      const { data: programRow, error: programError } = await supabase
         .from('programs')
-        .select('id, name')
+        .select('*')
         .eq('id', programId)
         .single()
 
       if (programError) throw programError
+
+      const row = (programRow || {}) as Record<string, unknown>
+      const programData: ProgramDetails = {
+        id: String(row.id || programId),
+        name: String(row.name || 'Programme'),
+        description: toNullableString(row.description),
+        session_instructions: toNullableString(row.session_instructions),
+        estimated_duration_minutes: toNullableInt(row.estimated_duration_minutes),
+      }
+
       setProgram(programData)
 
-      // 2. Fetch Exercises for this program
       const { data: exercisesData, error: exercisesError } = await supabase
         .from('exercises')
         .select('*')
@@ -95,12 +262,24 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
 
       if (exercisesError) throw exercisesError
 
-      // Filter out section headers
-      const validExercises = (exercisesData || []).filter(ex => !ex.is_section_header)
-      setExercises(validExercises)
+      const validExercises = ((exercisesData || []) as WorkoutExercise[]).filter((exercise) => !exercise.is_section_header)
+      const normalizedExercises = toSortedExercises(validExercises)
+      const nextBlocks = buildExerciseBlocks(normalizedExercises)
 
-    } catch (err: any) {
-       setError(err.message || 'Error loading workout data')
+      setExercises(normalizedExercises)
+      setBlocks(nextBlocks)
+      setCurrentBlockIndex(0)
+      setCurrentExerciseInBlockIndex(0)
+      setCurrentRound(1)
+      setIsResting(false)
+      setIsFinished(false)
+      setWasStoppedEarly(false)
+      setCompletedExercises(new Set())
+      setSessionStartTime(new Date())
+      setSessionEndTime(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error loading workout data'
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -110,76 +289,112 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
     fetchWorkoutData()
   }, [fetchWorkoutData])
 
-  // Current session logic
-  const currentExercise = exercises[currentExerciseIndex]
-  const totalSets = currentExercise?.sets || 1
-
-  // Start timer on mount
-  useEffect(() => {
-    setSessionStartTime(new Date())
-  }, [])
-
   const nextSet = useCallback(() => {
-    if (!currentExercise) return
+    if (!currentBlock || !currentExercise || isTimedMode) return
 
-    // Final set of the current exercise
-    if (currentSetIndex >= totalSets - 1) {
+    const isSingleExerciseBlock = currentBlock.exercises.length <= 1
+    const isLastRound = currentRound >= currentBlock.rounds
 
-      // Mark as completed
-      setCompletedExercises(prev => {
-        const next = new Set(prev)
-        next.add(currentExercise.id)
-        return next
-      })
-
-      // If it's the last exercise of the whole workout
-      if (currentExerciseIndex >= exercises.length - 1) {
-        // Workout Finished
-        setIsFinished(true)
-        setWasStoppedEarly(false)
-        setSessionEndTime(new Date())
+    if (isSingleExerciseBlock) {
+      if (isLastRound) {
+        markBlockAsCompleted(currentBlock)
+        moveToNextBlock(currentBlockIndex)
         return
       }
 
-      // Has a rest time?
       if (currentExercise.rest_time) {
         setIsResting(true)
       } else {
-        // Or immediately jump to next exercise
-        setCurrentSetIndex(0)
-        setCurrentExerciseIndex(prev => prev + 1)
+        setCurrentRound((previous) => previous + 1)
       }
-    } else {
-      // Just moving to the next set
-      if (currentExercise.rest_time) {
-         setIsResting(true)
-      } else {
-         setCurrentSetIndex(prev => prev + 1)
-      }
+      return
     }
-  }, [currentExercise, currentSetIndex, totalSets, currentExerciseIndex, exercises.length])
+
+    const isLastExerciseInGroup = currentExerciseInBlockIndex >= currentBlock.exercises.length - 1
+
+    if (!isLastExerciseInGroup) {
+      setCurrentExerciseInBlockIndex((previous) => previous + 1)
+      return
+    }
+
+    if (isLastRound) {
+      markBlockAsCompleted(currentBlock)
+      moveToNextBlock(currentBlockIndex)
+      return
+    }
+
+    const groupRest = currentExercise.rest_time || currentBlock.exercises[0]?.rest_time
+    if (groupRest) {
+      setIsResting(true)
+    } else {
+      setCurrentRound((previous) => previous + 1)
+      setCurrentExerciseInBlockIndex(0)
+    }
+  }, [
+    currentBlock,
+    currentBlockIndex,
+    currentExercise,
+    currentExerciseInBlockIndex,
+    currentRound,
+    isTimedMode,
+    markBlockAsCompleted,
+    moveToNextBlock,
+  ])
 
   const finishRest = useCallback(() => {
+    if (!isResting || !currentBlock || isTimedMode) return
+
     setIsResting(false)
-    
-    // Were we at the end of the sets?
-    if (currentSetIndex >= totalSets - 1) {
-       // Proceed to next exercise
-       setCurrentSetIndex(0)
-       setCurrentExerciseIndex(prev => prev + 1)
-    } else {
-       // Proceed to next set
-       setCurrentSetIndex(prev => prev + 1)
+
+    if (currentRound < currentBlock.rounds) {
+      setCurrentRound((previous) => previous + 1)
+      if (currentBlock.exercises.length > 1) {
+        setCurrentExerciseInBlockIndex(0)
+      }
     }
-  }, [currentSetIndex, totalSets])
+  }, [currentBlock, currentRound, isResting, isTimedMode])
 
   const selectExercise = useCallback((index: number) => {
-    if (index >= 0 && index < exercises.length) {
-      setCurrentExerciseIndex(index)
-      setCurrentSetIndex(0)
-      setIsResting(false)
+    if (index < 0 || index >= exercises.length) return
+
+    const selectedExercise = exercises[index]
+    const matchingBlockIndex = blocks.findIndex((block) =>
+      block.exercises.some((exercise) => String(exercise.id) === String(selectedExercise.id))
+    )
+
+    if (matchingBlockIndex === -1) return
+
+    const matchingBlock = blocks[matchingBlockIndex]
+    const exerciseInBlockIndex = matchingBlock.exercises.findIndex(
+      (exercise) => String(exercise.id) === String(selectedExercise.id)
+    )
+
+    setCurrentBlockIndex(matchingBlockIndex)
+    setCurrentExerciseInBlockIndex(exerciseInBlockIndex >= 0 ? exerciseInBlockIndex : 0)
+    setCurrentRound(1)
+    setIsResting(false)
+  }, [blocks, exercises])
+
+  const completeTimedBlock = useCallback(() => {
+    if (!currentBlock) return
+
+    if (!isTimedExecutionMode(currentBlock.mode)) {
+      nextSet()
+      return
     }
-  }, [exercises.length])
+
+    markBlockAsCompleted(currentBlock)
+    moveToNextBlock(currentBlockIndex)
+  }, [currentBlock, currentBlockIndex, markBlockAsCompleted, moveToNextBlock, nextSet])
+
+  const setTimedExerciseIndex = useCallback((index: number) => {
+    if (!currentBlock || !isTimedExecutionMode(currentBlock.mode)) return
+    const totalInBlock = currentBlock.exercises.length
+    if (totalInBlock <= 0) return
+
+    const safeIndex = ((Math.floor(index) % totalInBlock) + totalInBlock) % totalInBlock
+    setCurrentExerciseInBlockIndex(safeIndex)
+  }, [currentBlock])
 
   const endWorkout = useCallback((stoppedEarly: boolean = true) => {
     setIsFinished(true)
@@ -192,11 +407,19 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
   return {
     program,
     exercises,
+    blocks,
     loading,
     error,
 
+    currentBlockIndex,
+    currentBlock,
     currentExerciseIndex,
+    currentExerciseInBlockIndex,
+    currentRound,
     currentSetIndex,
+    blockRoundCount,
+    executionMode,
+    isTimedMode,
     isResting,
     isFinished,
     wasStoppedEarly,
@@ -207,6 +430,8 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
     nextSet,
     finishRest,
     selectExercise,
+    completeTimedBlock,
+    setTimedExerciseIndex,
     endWorkout
   }
 }

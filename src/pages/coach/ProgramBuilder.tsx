@@ -4,9 +4,12 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { toast } from 'sonner'
 import {
   ArrowLeft, Search, Dumbbell, Plus,
-  GripVertical, Trash2, ChevronDown, ChevronUp, Link2, Repeat, Clock
+  GripVertical, Trash2, ChevronDown, ChevronUp, Link2, Repeat, Clock,
+  Library, X, ArrowUpAZ, ArrowDownAZ, Layers as LayersIcon, Sparkles, CheckCircle2
 } from 'lucide-react'
 import { useExerciseLibrary } from '@/hooks/useExerciseLibrary'
 import { useProgramEditor, normalizeExecutionMode, type ExecutionMode } from '@/hooks/useProgramEditor'
@@ -42,6 +45,12 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
   const [isExpanded, setIsExpanded] = useState(false)
   const numSets = Number(item.sets) || 0
 
+  const parseNumeric = (value: string) => {
+    if (value === '' || value === null || value === undefined) return null
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
   const handleSetDetailChange = (index: number, field: string, value: string) => {
     const currentDetails = Array.isArray(item.set_details) ? [...item.set_details] : []
     while (currentDetails.length < numSets) {
@@ -56,17 +65,22 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
 
   return (
     <div ref={setDropRef} className="relative">
-      {/* We need the inner to be sortable, the outer to be droppable */}
+      {/* We need the inner to be sortable, the outer to be droppable.
+          Drag listeners are applied on the WHOLE card so a long-press
+          anywhere (mobile) or click+drag of 8px (desktop) starts the move.
+          On mobile, the TouchSensor requires a 400ms hold before triggering. */}
       <div
         ref={setNodeRef}
         style={style}
-        className={`rounded-[24px] bg-white p-4 shadow-sm transition-all flex flex-col relative z-50 ${isOver ? 'ring-2 ring-[#10b981]/50 bg-[#10b981]/5' : ''} ${isGrouped ? 'border border-slate-100 mb-2' : 'border border-slate-200 mb-4'}`}
+        {...attributes}
+        {...listeners}
+        className={`rounded-[24px] bg-white p-4 shadow-sm transition-all flex flex-col relative z-50 select-none ${isOver ? 'ring-2 ring-[#10b981]/50 bg-[#10b981]/5' : ''} ${isGrouped ? 'border border-slate-100 mb-2' : 'border border-slate-200 mb-4'}`}
       >
        <div className="flex items-center justify-between gap-4 flex-wrap">
          <div className="flex items-center gap-4">
-            <button {...attributes} {...listeners} className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing p-1">
+            <span className="text-slate-300 p-1 cursor-grab active:cursor-grabbing" aria-hidden>
               <GripVertical className="h-5 w-5" />
-            </button>
+            </span>
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 shrink-0 border border-slate-200/50 overflow-hidden relative">
               {item.photo_url ? (
                 <img src={item.photo_url} alt={item.name} className="w-full h-full object-cover" />
@@ -80,38 +94,142 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
             </div>
          </div>
 
-         <div className="flex items-center gap-4 sm:ml-auto">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Mode</span>
-              <Select value={item.effort_type || 'range'} onValueChange={(val) => onUpdate(item.id, 'effort_type', val)}>
-                <SelectTrigger className="h-8 w-28 rounded-lg bg-slate-50 border-none text-xs font-bold text-slate-700">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="range">Plage</SelectItem>
-                  <SelectItem value="fixed">Fixe</SelectItem>
-                  <SelectItem value="time">Temps</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
+         <div className="flex items-center gap-2 flex-wrap sm:gap-4 sm:ml-auto sm:flex-nowrap">
             <div className="text-center">
               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Sets</p>
               <Input value={item.sets || ''} onChange={e => {
                 onUpdate(item.id, 'sets', e.target.value)
-              }} className="h-9 w-16 text-center text-sm font-bold rounded-lg border-slate-200" />
+              }} className="h-9 w-14 text-center text-sm font-bold rounded-lg border-slate-200" />
             </div>
+
+            {/* Reps / Effort cell: adapts to effort_type */}
             <div className="text-center">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Reps</p>
-              <Input value={item.reps || ''} onChange={e => onUpdate(item.id, 'reps', e.target.value)} className="h-9 w-20 text-center text-sm font-bold rounded-lg border-slate-200" />
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Effort</p>
+              <div className="flex items-center gap-1">
+                <Select
+                  value={item.effort_type || 'fixed'}
+                  onValueChange={(val) => onUpdate(item.id, 'effort_type', val)}
+                >
+                  <SelectTrigger className="h-9 w-[100px] rounded-lg bg-slate-50 border-slate-200 text-[11px] font-bold text-slate-700">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">Rép</SelectItem>
+                    <SelectItem value="range">Entre…</SelectItem>
+                    <SelectItem value="time">Temps</SelectItem>
+                    <SelectItem value="distance">Distance</SelectItem>
+                    <SelectItem value="intensity">Intensité</SelectItem>
+                    <SelectItem value="max_reps">Max rép</SelectItem>
+                    <SelectItem value="max_time">Max temps</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {(item.effort_type || 'fixed') === 'fixed' && (
+                  <Input
+                    value={item.reps || ''}
+                    onChange={e => onUpdate(item.id, 'reps', e.target.value)}
+                    placeholder="10"
+                    className="h-9 w-16 text-center text-sm font-bold rounded-lg border-slate-200"
+                  />
+                )}
+
+                {item.effort_type === 'range' && (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      value={item.reps_min ?? ''}
+                      onChange={e => onUpdate(item.id, 'reps_min', parseNumeric(e.target.value))}
+                      placeholder="8"
+                      className="h-9 w-12 text-center text-sm font-bold rounded-lg border-slate-200"
+                    />
+                    <span className="text-xs font-bold text-slate-400">-</span>
+                    <Input
+                      value={item.reps_max ?? ''}
+                      onChange={e => onUpdate(item.id, 'reps_max', parseNumeric(e.target.value))}
+                      placeholder="12"
+                      className="h-9 w-12 text-center text-sm font-bold rounded-lg border-slate-200"
+                    />
+                  </div>
+                )}
+
+                {item.effort_type === 'time' && (
+                  <Input
+                    value={item.duration_minutes || ''}
+                    onChange={e => onUpdate(item.id, 'duration_minutes', e.target.value)}
+                    placeholder="00:45"
+                    className="h-9 w-20 text-center text-sm font-mono font-bold rounded-lg border-slate-200"
+                  />
+                )}
+
+                {item.effort_type === 'distance' && (
+                  <Input
+                    value={item.reps || ''}
+                    onChange={e => onUpdate(item.id, 'reps', e.target.value)}
+                    placeholder="5 km"
+                    className="h-9 w-20 text-center text-sm font-bold rounded-lg border-slate-200"
+                  />
+                )}
+
+                {item.effort_type === 'intensity' && (
+                  <Select
+                    value={item.intensity || ''}
+                    onValueChange={(val) => onUpdate(item.id, 'intensity', val)}
+                  >
+                    <SelectTrigger className="h-9 w-[100px] rounded-lg bg-slate-50 border-slate-200 text-[11px] font-bold text-slate-700">
+                      <SelectValue placeholder="Niveau" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Faible">Faible</SelectItem>
+                      <SelectItem value="Modérée">Modérée</SelectItem>
+                      <SelectItem value="Élevée">Élevée</SelectItem>
+                      <SelectItem value="Maximale">Maximale</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {item.effort_type === 'max_reps' && (
+                  <Badge className="h-9 px-2 rounded-lg bg-amber-100 text-amber-800 text-[10px] font-extrabold uppercase tracking-wider border-none flex items-center">
+                    AMAP
+                  </Badge>
+                )}
+
+                {item.effort_type === 'max_time' && (
+                  <Badge className="h-9 px-2 rounded-lg bg-amber-100 text-amber-800 text-[10px] font-extrabold uppercase tracking-wider border-none flex items-center">
+                    Max
+                  </Badge>
+                )}
+              </div>
             </div>
+
             <div className="text-center">
-               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Charge({item.charge_type||'kg'})</p>
-               <Input value={item.charge || ''} onChange={e => onUpdate(item.id, 'charge', e.target.value)} className="h-9 w-20 text-center text-sm font-bold rounded-lg border-slate-200" />
+               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Charge</p>
+               <div className="flex items-center gap-1">
+                 <Select
+                   value={item.charge_type || 'kg'}
+                   onValueChange={(val) => onUpdate(item.id, 'charge_type', val)}
+                 >
+                   <SelectTrigger className="h-9 w-[68px] rounded-lg bg-slate-50 border-slate-200 text-[11px] font-bold text-slate-700">
+                     <SelectValue />
+                   </SelectTrigger>
+                   <SelectContent>
+                     <SelectItem value="kg">kg</SelectItem>
+                     <SelectItem value="PDC">PDC</SelectItem>
+                     <SelectItem value="Nv">Niveau</SelectItem>
+                     <SelectItem value="none">Aucune</SelectItem>
+                   </SelectContent>
+                 </Select>
+                 {item.charge_type !== 'none' && item.charge_type !== 'PDC' && (
+                   <Input
+                     value={item.charge || ''}
+                     onChange={e => onUpdate(item.id, 'charge', e.target.value)}
+                     placeholder={item.charge_type === 'Nv' ? '3' : '50'}
+                     className="h-9 w-14 text-center text-sm font-bold rounded-lg border-slate-200"
+                   />
+                 )}
+               </div>
             </div>
             <div className="text-center">
                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Rest</p>
-               <Input value={item.rest_time || ''} onChange={e => onUpdate(item.id, 'rest_time', e.target.value)} className="h-9 w-20 text-center text-sm font-bold rounded-lg border-slate-200" />
+               <Input value={item.rest_time || ''} onChange={e => onUpdate(item.id, 'rest_time', e.target.value)} placeholder="01:30" className="h-9 w-20 text-center text-sm font-mono font-bold rounded-lg border-slate-200" />
             </div>
 
             <button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 transition-all mt-[18px] p-2">
@@ -169,21 +287,31 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
   )
 }
 
-function SortableSeparator({ item, onDelete }: any) {
+function SortableSeparator({ item, onDelete, isFirst = false }: any) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id })
   const style = { transform: CSS.Transform.toString(transform), transition }
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-4 mb-4 mt-8">
-       <button {...attributes} {...listeners} className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing p-1">
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`flex items-center gap-4 mb-4 select-none ${isFirst ? 'mt-0' : 'mt-8'}`}
+    >
+       <span className="text-slate-300 p-1 cursor-grab active:cursor-grabbing" aria-hidden>
           <GripVertical className="h-5 w-5" />
-       </button>
+       </span>
        <div className="flex-1 h-px bg-slate-200"></div>
        <Badge variant="outline" className="px-4 py-1.5 rounded-full text-xs font-bold text-slate-500 bg-white uppercase tracking-widest shadow-sm">
          {item.name}
        </Badge>
        <div className="flex-1 h-px bg-slate-200"></div>
-       <button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 transition-all p-2">
+       <button
+         onClick={(e) => { e.stopPropagation(); onDelete(item.id) }}
+         onPointerDown={(e) => e.stopPropagation()}
+         className="text-slate-300 hover:text-red-500 transition-all p-2"
+       >
          <Trash2 className="h-4 w-4" />
        </button>
     </div>
@@ -274,6 +402,28 @@ function CanvasDropZone({
   return <>{children({ isOver, setNodeRef })}</>
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function SortIcon({ sort }: { sort: 'name_asc' | 'name_desc' | 'type' | 'body' }) {
+  switch (sort) {
+    case 'name_desc':
+      return <ArrowDownAZ className="h-3.5 w-3.5" />
+    case 'type':
+      return <LayersIcon className="h-3.5 w-3.5" />
+    case 'body':
+      return <Sparkles className="h-3.5 w-3.5" />
+    case 'name_asc':
+    default:
+      return <ArrowUpAZ className="h-3.5 w-3.5" />
+  }
+}
+
+function hasActiveLibraryFilter(query: string, typeFilter: string, muscleFilter: string): boolean {
+  return query.trim().length > 0 || typeFilter !== 'TOUT' || muscleFilter !== 'TOUT'
+}
+
 export default function ProgramBuilder() {
   const navigate = useNavigate()
   const { id: pathProgramId } = useParams()
@@ -314,7 +464,11 @@ export default function ProgramBuilder() {
   const { exercises: libraryExercises, loading: isLibraryLoading } = useExerciseLibrary()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [isLibraryOpenMobile, setIsLibraryOpenMobile] = useState(false)
+  const [librarySort, setLibrarySort] = useState<'name_asc' | 'name_desc' | 'type' | 'body'>('name_asc')
+  const [recentlyAddedExoId, setRecentlyAddedExoId] = useState<string | null>(null)
   const [muscleFilter, setMuscleFilter] = useState('TOUT')
+  const [typeFilter, setTypeFilter] = useState<'TOUT' | 'Renforcement' | 'Cardio' | 'Étirement' | 'Mobilité'>('TOUT')
   const isSameItemId = (left: unknown, right: unknown) => String(left) === String(right)
 
   const getAutoGroupLabel = (mode: ExecutionMode, count: number) => {
@@ -331,8 +485,15 @@ export default function ProgramBuilder() {
     return Number.isFinite(parsed) ? parsed : null
   }
 
+  const normalizeForCompare = (value?: string | null) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+
   const filteredLibrary = libraryExercises.filter((exo) => {
     const matchSearch = exo.name.toLowerCase().includes(searchQuery.toLowerCase())
+
     let matchMuscle = true
     if (muscleFilter !== 'TOUT') {
       const bp = (exo.body_part || '').toLowerCase()
@@ -340,13 +501,72 @@ export default function ProgramBuilder() {
       if (muscleFilter === 'DOS' && !bp.includes('dos') && !bp.includes('back')) matchMuscle = false
       if (muscleFilter === 'JAMBES' && !bp.includes('jambe') && !bp.includes('leg') && !bp.includes('fess')) matchMuscle = false
     }
-    return matchSearch && matchMuscle
+
+    let matchType = true
+    if (typeFilter !== 'TOUT') {
+      matchType = normalizeForCompare(exo.type) === normalizeForCompare(typeFilter)
+    }
+
+    return matchSearch && matchMuscle && matchType
   })
+
+  // Sort library exercises (mobile sheet)
+  const sortedLibrary = [...filteredLibrary].sort((a, b) => {
+    const aName = a.name || ''
+    const bName = b.name || ''
+    switch (librarySort) {
+      case 'name_desc':
+        return bName.localeCompare(aName, 'fr')
+      case 'type':
+        return (a.type || '').localeCompare(b.type || '', 'fr') || aName.localeCompare(bName, 'fr')
+      case 'body':
+        return (a.body_part || '').localeCompare(b.body_part || '', 'fr') || aName.localeCompare(bName, 'fr')
+      case 'name_asc':
+      default:
+        return aName.localeCompare(bName, 'fr')
+    }
+  })
+
+  /**
+   * Add an exercise from the mobile library sheet.
+   * Shows a brief visual confirmation + a toast + optional haptic vibration.
+   * The sheet stays open so the coach can add multiple exos in a row.
+   */
+  const handleAddExoFromMobileSheet = (exo: any) => {
+    handleAddItem(exo)
+
+    // Visual flash on the tapped card
+    setRecentlyAddedExoId(String(exo.id))
+    window.setTimeout(() => setRecentlyAddedExoId(null), 700)
+
+    // Tiny haptic on supporting devices
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try { navigator.vibrate(15) } catch { /* ignore */ }
+    }
+
+    toast.success(`« ${exo.name} » ajouté`, {
+      duration: 1500,
+      position: 'top-center',
+    })
+  }
+
+  const handleAddSeparatorFromMobileSheet = (name: string) => {
+    handleAddItem({ type: 'separator', name })
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try { navigator.vibrate(15) } catch { /* ignore */ }
+    }
+    toast.success(`Section « ${name} » ajoutée`, {
+      duration: 1500,
+      position: 'top-center',
+    })
+  }
 
   // DND Handlers
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
+    // Mobile: require a clear long-press (400ms) before drag activates,
+    // otherwise scrolling vertically would accidentally pick up an item.
+    useSensor(TouchSensor, { activationConstraint: { delay: 400, tolerance: 8 } })
   )
 
   // Custom collision detection to handle both reordering and grouping
@@ -471,11 +691,17 @@ export default function ProgramBuilder() {
           return
         }
 
-        // If dropping directly onto an item card, it groups automatically
+        // If dropping directly onto an item card
         if (overIdStr.startsWith('solo-drop-')) {
           const targetItemId = overIdStr.replace('solo-drop-', '')
           const targetItem = items.find((it) => isSameItemId(it.id, targetItemId))
           const targetIndex = items.findIndex((it) => isSameItemId(it.id, targetItemId))
+
+          // Separators dropped onto a card → insert just BEFORE the target card
+          if (data.type === 'separator' && targetIndex !== -1) {
+            handleAddItem(newItemObj, { insertAt: targetIndex })
+            return
+          }
 
           if (data.type === 'exercise' && targetItem && !targetItem.is_section_header) {
             const newSupersetId = targetItem.superset_id || crypto.randomUUID()
@@ -563,31 +789,51 @@ export default function ProgramBuilder() {
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-slate-50">
       
       {/* HEADER TOP BAR */}
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 shadow-sm z-10 transition-all">
-        <div className="flex items-center gap-4">
-          <button 
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 shadow-sm z-10 pt-safe lg:h-16 lg:px-6">
+        <div className="flex items-center gap-2 min-w-0 flex-1 lg:gap-4">
+          <button
             onClick={handleNavigateBack}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 lg:h-10 lg:w-10"
+            aria-label="Retour"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Advanced Program Builder</h1>
-            <input 
-              value={program.name} 
+          <div className="min-w-0 flex-1">
+            <h1 className="hidden text-xl font-bold text-slate-900 lg:block">Advanced Program Builder</h1>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 lg:hidden">
+              Programme
+            </p>
+            <input
+              value={program.name}
               onChange={e => handleProgramChange('name', e.target.value)}
-              className="mt-0.5 bg-transparent text-[11px] font-bold uppercase tracking-widest text-[#10b981] outline-none placeholder:text-[#10b981]/50 w-64"
-              placeholder="NOM DU PROGRAMME"
+              className="w-full max-w-full bg-transparent text-sm font-extrabold text-slate-900 outline-none placeholder:text-slate-300 lg:mt-0.5 lg:text-[11px] lg:font-bold lg:uppercase lg:tracking-widest lg:text-[#10b981] lg:placeholder:text-[#10b981]/50"
+              placeholder="Nom du programme"
             />
           </div>
         </div>
-        
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={handleNavigateBack} className="rounded-xl font-bold text-slate-500 hover:bg-slate-100">
+
+        <div className="flex items-center gap-2 lg:gap-3">
+          <Button
+            variant="ghost"
+            onClick={handleNavigateBack}
+            className="hidden rounded-xl font-bold text-slate-500 hover:bg-slate-100 lg:inline-flex"
+          >
             Annuler
           </Button>
-          <Button onClick={handleSave} disabled={isSaving} className="rounded-xl bg-[#10b981] px-6 font-bold text-white shadow-md hover:bg-[#059669]">
-            {isSaving ? 'Enregistrement...' : 'Enregistrer le programme'}
+          <Button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="h-9 rounded-xl bg-[#10b981] px-3 font-bold text-white shadow-md hover:bg-[#059669] lg:h-10 lg:px-6"
+          >
+            {isSaving ? (
+              <span className="hidden lg:inline">Enregistrement...</span>
+            ) : (
+              <>
+                <span className="lg:hidden">Sauver</span>
+                <span className="hidden lg:inline">Enregistrer le programme</span>
+              </>
+            )}
+            {isSaving && <span className="lg:hidden">…</span>}
           </Button>
         </div>
       </header>
@@ -601,16 +847,27 @@ export default function ProgramBuilder() {
               {({ isOver: isCanvasDropOver, setNodeRef: setCanvasDropRef }) => (
                 <div
                   ref={setCanvasDropRef}
-                  className={`mx-auto max-w-4xl p-6 lg:p-10 pb-40 space-y-4 rounded-[28px] transition-colors ${
+                  className={`mx-auto max-w-4xl p-3 pb-32 space-y-3 rounded-[28px] transition-colors lg:p-10 lg:pb-40 lg:space-y-4 ${
                     isCanvasDropOver ? 'bg-[#10b981]/5' : ''
                   }`}
                 >
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                     <DroppableExecutionModeCard mode="Superset" subtitle="2+ exos enchaînés" />
                     <DroppableExecutionModeCard mode="Circuit" subtitle="enchaînement tours" />
                     <DroppableExecutionModeCard mode="AMRAP" subtitle="max reps au temps" />
                     <DroppableExecutionModeCard mode="EMOM" subtitle="chaque minute" />
                   </div>
+
+                  {/* Mobile-only hint about long-press to reorder */}
+                  {items.length > 1 && (
+                    <div className="flex items-center gap-2 rounded-xl bg-slate-100/70 px-3 py-2 text-[11px] font-medium text-slate-600 lg:hidden">
+                      <span className="text-base leading-none">💡</span>
+                      <span>
+                        <strong className="font-bold">Maintiens un exercice</strong> appuyé pour le déplacer
+                        ou le grouper avec un autre.
+                      </span>
+                    </div>
+                  )}
 
                   <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
                     {items.length === 0 ? (
@@ -627,7 +884,14 @@ export default function ProgramBuilder() {
                           const item = items[i];
 
                           if (item.is_section_header) {
-                            rendered.push(<SortableSeparator key={item.id} item={item} onDelete={handleDeleteItem} />);
+                            rendered.push(
+                              <SortableSeparator
+                                key={item.id}
+                                item={item}
+                                onDelete={handleDeleteItem}
+                                isFirst={i === 0}
+                              />
+                            );
                             continue;
                           }
 
@@ -776,8 +1040,8 @@ export default function ProgramBuilder() {
             </CanvasDropZone>
           </div>
 
-        {/* RIGHT ZONE: LA RESERVE (Library) */}
-        <div className="w-[360px] lg:w-[400px] shrink-0 border-l border-slate-200 bg-[#fbfbfb] flex flex-col z-0 relative shadow-[-4px_0_24px_-12px_rgba(0,0,0,0.05)]">
+        {/* RIGHT ZONE: LA RESERVE (Library) — desktop only */}
+        <div className="hidden w-[360px] shrink-0 border-l border-slate-200 bg-[#fbfbfb] z-0 relative shadow-[-4px_0_24px_-12px_rgba(0,0,0,0.05)] lg:flex lg:w-[400px] lg:flex-col">
           <div className="p-5 border-b border-slate-200/60 bg-white/50 backdrop-blur-sm sticky top-0 z-10">
             <h2 className="text-lg font-extrabold text-slate-900 flex justify-between items-center mb-4">
               La Réserve
@@ -796,12 +1060,27 @@ export default function ProgramBuilder() {
               />
             </div>
             
+            {/* Type filters (Cardio/Renforcement/Étirement/Mobilité) */}
+            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1.5 mb-1.5">
+              {(['TOUT', 'Renforcement', 'Cardio', 'Étirement', 'Mobilité'] as const).map((label) => (
+                <Badge
+                  key={label}
+                  onClick={() => setTypeFilter(label)}
+                  variant={typeFilter === label ? 'secondary' : 'outline'}
+                  className={`${typeFilter === label ? 'bg-slate-900 text-white shadow-sm hover:bg-slate-800' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'} font-bold rounded-lg px-3 py-1 text-[10px] cursor-pointer whitespace-nowrap`}
+                >
+                  {label === 'TOUT' ? 'TOUS TYPES' : label.toUpperCase()}
+                </Badge>
+              ))}
+            </div>
+
+            {/* Muscle filters (legacy quick chips) */}
             <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
-               <Badge 
+               <Badge
                   onClick={() => setMuscleFilter('TOUT')}
-                  variant={muscleFilter === 'TOUT' ? 'secondary' : 'outline'} 
+                  variant={muscleFilter === 'TOUT' ? 'secondary' : 'outline'}
                   className={`${muscleFilter === 'TOUT' ? 'bg-[#10b981] text-white shadow-sm hover:bg-[#059669]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} font-bold rounded-lg px-3 py-1 text-[10px] cursor-pointer`}
-                >TOUT</Badge>
+                >ZONES</Badge>
                 <Badge 
                   onClick={() => setMuscleFilter('PECTORAUX')}
                   variant={muscleFilter === 'PECTORAUX' ? 'secondary' : 'outline'} 
@@ -823,9 +1102,13 @@ export default function ProgramBuilder() {
           <div className="flex-1 px-4 py-4 overflow-y-auto touch-pan-y">
             <div className="space-y-4 pb-20">
               
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 mb-2">Séparateurs</h4>
               <div className="grid grid-cols-2 gap-2 mb-6 border-b border-slate-100 pb-6">
                 <DraggableSeparatorBtn name="Échauffement" icon={true} />
                 <DraggableSeparatorBtn name="Corps de séance" icon={true} />
+                <DraggableSeparatorBtn name="Retour au calme" icon={true} />
+                <DraggableSeparatorBtn name="Étirement" icon={true} />
+                <DraggableSeparatorBtn name="Mobilité" icon={true} />
               </div>
 
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 mb-2">Exercices</h4>
@@ -839,11 +1122,262 @@ export default function ProgramBuilder() {
                   <DraggableLibraryCard key={exo.id} exo={exo} />
                 ))
               )}
-              
+
             </div>
           </div>
         </div>
       </div>
+
+      {/* MOBILE ONLY — Floating Action Button to open library sheet
+          - z-[60] to stay above sortable exercise cards (z-50)
+          - Hidden when the sheet is open (avoids overlapping the sheet content)
+          - Positioned above the CoachBottomNav (64px height + safe-area-inset-bottom)
+      */}
+      {!isLibraryOpenMobile && (
+        <button
+          type="button"
+          onClick={() => setIsLibraryOpenMobile(true)}
+          style={{ bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
+          className="fixed right-4 z-[60] flex h-14 items-center gap-2 rounded-full bg-[#10b981] px-5 font-extrabold text-white shadow-2xl shadow-emerald-500/40 active:scale-95 transition-transform lg:hidden"
+          aria-label="Ouvrir la bibliothèque"
+        >
+          <Library className="h-5 w-5" />
+          <span className="text-sm">Ajouter</span>
+        </button>
+      )}
+
+      {/* MOBILE ONLY — Library Modal Sheet (polished) */}
+      <Sheet open={isLibraryOpenMobile} onOpenChange={setIsLibraryOpenMobile}>
+        <SheetContent
+          side="bottom"
+          className="data-[side=bottom]:h-[78dvh] data-[side=bottom]:max-h-[78dvh] flex flex-col overflow-hidden rounded-t-[28px] border-none bg-white p-0 shadow-2xl lg:hidden"
+        >
+          <SheetTitle className="sr-only">Bibliothèque d'exercices</SheetTitle>
+
+          {/* Drag handle */}
+          <div className="flex shrink-0 justify-center pt-2.5 pb-1">
+            <span className="h-1 w-10 rounded-full bg-slate-300" aria-hidden />
+          </div>
+
+          {/* Hero header (gradient) — title + sort + close */}
+          <div className="shrink-0 px-4 pt-1 pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#10b981]/10">
+                  <Library className="h-4 w-4 text-[#10b981]" />
+                </div>
+                <div>
+                  <h2 className="text-base font-extrabold leading-tight text-slate-900">
+                    La Réserve
+                  </h2>
+                  <p className="text-[10px] font-medium text-slate-500">
+                    {sortedLibrary.length} exercice{sortedLibrary.length > 1 ? 's' : ''} disponible{sortedLibrary.length > 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {/* Sort menu (Select) */}
+                <Select
+                  value={librarySort}
+                  onValueChange={(v) => setLibrarySort(v as typeof librarySort)}
+                >
+                  <SelectTrigger className="h-9 gap-1 rounded-full border-slate-200 bg-slate-50 px-3 text-[11px] font-bold text-slate-700 focus:ring-0 [&>svg:last-child]:opacity-50">
+                    <SortIcon sort={librarySort} />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end" className="rounded-xl">
+                    <SelectItem value="name_asc">
+                      <span className="flex items-center gap-2">
+                        <ArrowUpAZ className="h-3.5 w-3.5" /> Nom (A–Z)
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="name_desc">
+                      <span className="flex items-center gap-2">
+                        <ArrowDownAZ className="h-3.5 w-3.5" /> Nom (Z–A)
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="type">
+                      <span className="flex items-center gap-2">
+                        <LayersIcon className="h-3.5 w-3.5" /> Par type
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="body">
+                      <span className="flex items-center gap-2">
+                        <Sparkles className="h-3.5 w-3.5" /> Par zone
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <button
+                  onClick={() => setIsLibraryOpenMobile(false)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 active:scale-95 transition-transform"
+                  aria-label="Fermer la bibliothèque"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Search + filters (sticky-ish via padding) */}
+          <div className="shrink-0 space-y-2.5 border-b border-slate-100 bg-white px-4 pb-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Rechercher un exercice…"
+                className="h-11 rounded-2xl bg-slate-50 pl-9 border-transparent focus-visible:bg-white focus-visible:border-[#10b981]/30 focus-visible:ring-[#10b981]/15 font-medium"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                  aria-label="Effacer la recherche"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Type filter chips */}
+            <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-1 px-1 pb-1">
+              {(['TOUT', 'Renforcement', 'Cardio', 'Étirement', 'Mobilité'] as const).map((label) => {
+                const active = typeFilter === label
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setTypeFilter(label)}
+                    className={`shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-extrabold uppercase tracking-wider transition-all ${
+                      active
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 active:scale-95'
+                    }`}
+                  >
+                    {label === 'TOUT' ? 'TOUS' : label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Content scrollable area (slider) */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 pb-8 custom-scrollbar">
+
+            {/* Separators row — tap to add */}
+            <details className="group mb-4 rounded-2xl bg-slate-50 [&_summary::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer items-center justify-between rounded-2xl px-3 py-2.5">
+                <span className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500">
+                  Séparateurs de séance
+                </span>
+                <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+                {(['Échauffement', 'Corps de séance', 'Retour au calme', 'Étirement', 'Mobilité'] as const).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => handleAddSeparatorFromMobileSheet(name)}
+                    className="flex items-center justify-start gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2.5 text-left text-xs font-bold text-slate-600 active:scale-[0.97] active:bg-[#10b981]/5 active:border-[#10b981]/40 active:text-[#10b981] transition-all"
+                  >
+                    <Plus className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="truncate">{name}</span>
+                  </button>
+                ))}
+              </div>
+            </details>
+
+            {/* Exercises list */}
+            <div className="mb-2 flex items-center justify-between px-1">
+              <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500">
+                Exercices
+              </h4>
+              {hasActiveLibraryFilter(searchQuery, typeFilter, muscleFilter) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setTypeFilter('TOUT')
+                    setMuscleFilter('TOUT')
+                  }}
+                  className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-700"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {isLibraryLoading ? (
+                <div className="rounded-2xl bg-slate-50 p-6 text-center text-xs font-medium text-slate-400">
+                  Chargement…
+                </div>
+              ) : sortedLibrary.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                  <p className="text-sm font-bold text-slate-700">Aucun exercice</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Modifie ta recherche ou tes filtres.
+                  </p>
+                </div>
+              ) : (
+                sortedLibrary.map((exo) => {
+                  const justAdded = recentlyAddedExoId === String(exo.id)
+                  return (
+                    <button
+                      key={exo.id}
+                      type="button"
+                      onClick={() => handleAddExoFromMobileSheet(exo)}
+                      className={`group flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-all duration-200 ${
+                        justAdded
+                          ? 'bg-[#10b981]/10 border-2 border-[#10b981] scale-[0.99]'
+                          : 'bg-white border border-slate-200 active:scale-[0.99] active:border-[#10b981]/40 active:bg-[#10b981]/5'
+                      }`}
+                    >
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 overflow-hidden border border-slate-200/50">
+                        {exo.photo_url ? (
+                          <img src={exo.photo_url} alt={exo.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Dumbbell className="h-5 w-5 text-slate-300" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className={`truncate text-sm font-bold transition-colors ${
+                          justAdded ? 'text-[#10b981]' : 'text-slate-900 group-active:text-[#10b981]'
+                        }`}>
+                          {exo.name}
+                        </h3>
+                        <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] font-medium text-slate-500">
+                          {exo.type && (
+                            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600">
+                              {exo.type}
+                            </span>
+                          )}
+                          <span className="truncate">{exo.body_part || 'Toutes zones'}</span>
+                        </p>
+                      </div>
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+                        justAdded
+                          ? 'bg-[#10b981] text-white scale-110'
+                          : 'bg-[#10b981]/10 text-[#10b981] group-active:bg-[#10b981] group-active:text-white'
+                      }`}>
+                        {justAdded ? (
+                          <CheckCircle2 className="h-5 w-5" strokeWidth={2.5} />
+                        ) : (
+                          <Plus className="h-4 w-4" strokeWidth={2.5} />
+                        )}
+                      </span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <DragOverlay dropAnimation={null}>
         {activeDragId && activeDragData ? (
@@ -860,7 +1394,7 @@ export default function ProgramBuilder() {
           </div>
         ) : null}
       </DragOverlay>
-      
+
       </DndContext>
     </div>
   )
