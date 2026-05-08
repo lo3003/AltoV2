@@ -26,6 +26,7 @@ export default function ClientStatsPage() {
     savingSession,
     tableReady,
     weeklyWeightPoints,
+    weeklySessionPoints,
     thisWeekSessions,
     thisMonthSessions,
     latestProgramTitle,
@@ -280,6 +281,20 @@ export default function ClientStatsPage() {
         </CardContent>
       </Card>
 
+      <Card className="border-border/40 bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Séances réalisées par semaine</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SessionsLineChart
+            points={weeklySessionPoints.map((point) => ({
+              label: point.weekLabel,
+              value: point.count,
+            }))}
+          />
+        </CardContent>
+      </Card>
+
       {error && (
         <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
           {error}
@@ -325,6 +340,128 @@ function StatsCard({
         <p className="mt-0.5 line-clamp-1 text-[10px] text-slate-500 lg:text-xs">{subtitle}</p>
       </CardContent>
     </Card>
+  )
+}
+
+function SessionsLineChart({
+  points,
+}: {
+  points: Array<{ label: string; value: number }>
+}) {
+  // No data: show empty state
+  if (points.length === 0 || points.every((p) => p.value === 0)) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+        Aucune séance réalisée sur les 12 dernières semaines.
+      </div>
+    )
+  }
+
+  const width = 1200
+  const height = 320
+  const padding = { top: 24, right: 32, bottom: 42, left: 44 }
+
+  const minValue = 0
+  const maxValue = Math.max(...points.map((p) => p.value), 1)
+  const valueRange = Math.max(maxValue - minValue, 1)
+
+  const plotWidth = width - padding.left - padding.right
+  const plotHeight = height - padding.top - padding.bottom
+
+  const coordinates = points.map((point, index) => {
+    const x =
+      padding.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth)
+    const y = padding.top + ((maxValue - point.value) / valueRange) * plotHeight
+    return { x, y, ...point }
+  })
+
+  const linePath = coordinates
+    .map((coord, index) => `${index === 0 ? 'M' : 'L'} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`)
+    .join(' ')
+
+  const areaPath = `${linePath} L ${coordinates[coordinates.length - 1].x.toFixed(2)} ${(height - padding.bottom).toFixed(2)} L ${coordinates[0].x.toFixed(2)} ${(height - padding.bottom).toFixed(2)} Z`
+
+  // Integer ticks: top, mid (rounded), 0
+  const yTicks = Array.from(new Set([maxValue, Math.round(maxValue / 2), 0]))
+
+  const total = points.reduce((acc, p) => acc + p.value, 0)
+  const avg = total / points.length
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 lg:p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm font-semibold text-slate-900">12 dernières semaines</p>
+        <p className="text-xs text-slate-500">
+          {total} séance{total > 1 ? 's' : ''} · moy. {avg.toFixed(1)}/sem.
+        </p>
+      </div>
+
+      <div className="relative w-full">
+        <svg viewBox={`0 0 ${width} ${height}`} className="h-[280px] w-full lg:h-[320px]">
+          {yTicks.map((tick) => {
+            const y = padding.top + ((maxValue - tick) / valueRange) * plotHeight
+            return (
+              <g key={tick}>
+                <line
+                  x1={padding.left}
+                  y1={y}
+                  x2={width - padding.right}
+                  y2={y}
+                  stroke="currentColor"
+                  className="text-slate-200"
+                  strokeDasharray="4 4"
+                />
+                <text
+                  x={padding.left - 8}
+                  y={y + 3}
+                  textAnchor="end"
+                  className="fill-slate-400 text-[10px] font-medium"
+                >
+                  {tick}
+                </text>
+              </g>
+            )
+          })}
+
+          <path d={areaPath} fill="currentColor" className="text-primary/10" />
+          <path d={linePath} fill="none" stroke="currentColor" className="text-primary" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+
+          {coordinates.map((coord) => (
+            <g key={`${coord.label}-${coord.x}`}>
+              <circle cx={coord.x} cy={coord.y} r={5} fill="white" stroke="currentColor" className="text-primary" strokeWidth={2.5} />
+              {coord.value > 0 && (
+                <text
+                  x={coord.x}
+                  y={coord.y - 12}
+                  textAnchor="middle"
+                  className="fill-slate-700 text-[11px] font-bold"
+                >
+                  {coord.value}
+                </text>
+              )}
+            </g>
+          ))}
+
+          {coordinates.map((coord, index) => {
+            const shouldLabel = index === 0 || index === coordinates.length - 1 || index === Math.floor((coordinates.length - 1) / 2)
+            if (!shouldLabel) return null
+
+            const shortLabel = coord.label.split(' - ')[0] || coord.label
+            return (
+              <text
+                key={`label-${coord.x}`}
+                x={coord.x}
+                y={height - 10}
+                textAnchor="middle"
+                className="fill-slate-500 text-[10px] font-medium"
+              >
+                {shortLabel}
+              </text>
+            )
+          })}
+        </svg>
+      </div>
+    </div>
   )
 }
 

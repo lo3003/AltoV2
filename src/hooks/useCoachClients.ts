@@ -18,6 +18,7 @@ export interface CoachClient {
   training_frequency?: string | null
   physical_issues?: string | null
   age?: number | null
+  birth_date?: string | null
   avatar_url?: string | null
   created_at?: string
 }
@@ -34,6 +35,7 @@ export interface ClientFormInput {
   training_frequency: string
   physical_issues: string
   age: string
+  birth_date: string
 }
 
 interface UseCoachClientsReturn {
@@ -74,6 +76,16 @@ const normalizeText = (value: string) => {
 const normalizeEmail = (value: string) => {
   const normalized = value.trim().toLowerCase()
   return normalized
+}
+
+const normalizeBirthDate = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  // Expecting YYYY-MM-DD from <input type="date">. Validate.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null
+  const date = new Date(trimmed)
+  if (Number.isNaN(date.getTime())) return null
+  return trimmed
 }
 
 export function useCoachClients(): UseCoachClientsReturn {
@@ -142,6 +154,7 @@ export function useCoachClients(): UseCoachClientsReturn {
             training_frequency: normalizeText(payload.training_frequency),
             physical_issues: normalizeText(payload.physical_issues),
             age: parseNullableInteger(payload.age),
+            birth_date: normalizeBirthDate(payload.birth_date),
           }
 
           const { data, error: insertError } = await supabase
@@ -194,6 +207,7 @@ export function useCoachClients(): UseCoachClientsReturn {
           training_frequency: normalizeText(payload.training_frequency),
           physical_issues: normalizeText(payload.physical_issues),
           age: parseNullableInteger(payload.age),
+          birth_date: normalizeBirthDate(payload.birth_date),
         }
 
         const { data, error: updateError } = await supabase

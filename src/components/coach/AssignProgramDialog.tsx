@@ -32,10 +32,31 @@ export function AssignProgramDialog({
   const [endDate, setEndDate] = useState('')
   const [coachInstructions, setCoachInstructions] = useState('')
 
-  const availablePrograms = useMemo(() => {
-    const assignedSet = new Set(assignedProgramIds.map((id) => String(id)))
-    return programs.filter((program) => !assignedSet.has(String(program.id)))
-  }, [programs, assignedProgramIds])
+  // Show ALL programs (sorted by recent first) but mark the ones already
+  // assigned to this client as disabled in the dropdown so the coach knows
+  // they exist and why they can't be re-picked.
+  const assignedSet = useMemo(
+    () => new Set(assignedProgramIds.map((id) => String(id))),
+    [assignedProgramIds]
+  )
+
+  const sortedPrograms = useMemo(() => {
+    return [...programs].sort((a, b) => {
+      // Programs not yet assigned bubble to the top
+      const aAssigned = assignedSet.has(String(a.id))
+      const bAssigned = assignedSet.has(String(b.id))
+      if (aAssigned !== bAssigned) return aAssigned ? 1 : -1
+      // Then most recent first
+      const at = a.created_at || ''
+      const bt = b.created_at || ''
+      return bt.localeCompare(at)
+    })
+  }, [programs, assignedSet])
+
+  const hasAtLeastOneAvailable = useMemo(
+    () => sortedPrograms.some((program) => !assignedSet.has(String(program.id))),
+    [sortedPrograms, assignedSet]
+  )
 
   const resetForm = () => {
     setSelectedProgramId('')
@@ -87,7 +108,7 @@ export function AssignProgramDialog({
           </DialogHeader>
 
           <div className="grid gap-4 px-6 py-4">
-            {availablePrograms.length > 0 ? (
+            {sortedPrograms.length > 0 ? (
               <>
                 <div className="grid gap-2">
                   <Label htmlFor="assign-program">Programme</Label>
@@ -96,13 +117,32 @@ export function AssignProgramDialog({
                       <SelectValue placeholder="Choisir un programme..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {availablePrograms.map((program) => (
-                        <SelectItem key={String(program.id)} value={String(program.id)}>
-                          {program.name}
-                        </SelectItem>
-                      ))}
+                      {sortedPrograms.map((program) => {
+                        const alreadyAssigned = assignedSet.has(String(program.id))
+                        return (
+                          <SelectItem
+                            key={String(program.id)}
+                            value={String(program.id)}
+                            disabled={alreadyAssigned}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span>{program.name}</span>
+                              {alreadyAssigned && (
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                  · déjà assigné
+                                </span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
+                  {!hasAtLeastOneAvailable && (
+                    <p className="text-xs text-amber-600">
+                      Tous tes programmes sont déjà assignés à ce client. Désassigne d'abord un programme pour pouvoir en (ré)assigner un.
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -161,7 +201,7 @@ export function AssignProgramDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || availablePrograms.length === 0}
+              disabled={isSubmitting || !hasAtLeastOneAvailable}
               className="bg-[#10b981] font-bold text-white shadow-sm hover:bg-[#059669]"
             >
               <CalendarIcon className="h-4 w-4" />

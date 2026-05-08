@@ -45,6 +45,28 @@ import { useClientProgramAssignments, type AssignProgramInput } from '@/hooks/us
 import { useClientCalendar, type ScheduledSession } from '@/hooks/useClientCalendar'
 import type { WorkoutLog } from '@/hooks/useCoachDashboard'
 
+// Compute age from a YYYY-MM-DD birth_date string. Returns null if missing/invalid.
+function computeAgeFromBirthDate(birthDate?: string | null): number | null {
+  if (!birthDate) return null
+  const date = new Date(birthDate)
+  if (Number.isNaN(date.getTime())) return null
+  const now = new Date()
+  let age = now.getFullYear() - date.getFullYear()
+  const m = now.getMonth() - date.getMonth()
+  if (m < 0 || (m === 0 && now.getDate() < date.getDate())) age--
+  return age >= 0 && age < 130 ? age : null
+}
+
+// Format a YYYY-MM-DD birth date as DD/MM/YYYY for display.
+function formatBirthDateFr(birthDate?: string | null): string | null {
+  if (!birthDate) return null
+  const date = new Date(birthDate)
+  if (Number.isNaN(date.getTime())) return null
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month}/${date.getFullYear()}`
+}
+
 interface AssignedProgramCard {
   id: string
   name: string
@@ -591,7 +613,15 @@ export default function ClientDetail() {
                     {client.full_name || client.email}
                   </h1>
                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500 sm:mt-1 sm:gap-2 sm:text-sm">
-                    <span className="flex items-center gap-1"><User className="h-3.5 w-3.5" /> {client.age ? `${client.age} ans` : 'Âge N/A'}</span>
+                    <span className="flex items-center gap-1"><User className="h-3.5 w-3.5" /> {(() => {
+                      const computed = computeAgeFromBirthDate(client.birth_date)
+                      const display = computed ?? client.age ?? null
+                      const formatted = formatBirthDateFr(client.birth_date)
+                      if (display != null && formatted) return `${display} ans · ${formatted}`
+                      if (display != null) return `${display} ans`
+                      if (formatted) return formatted
+                      return 'Âge N/A'
+                    })()}</span>
                     <span className="text-slate-300">•</span>
                     <span className="truncate">{client.main_goal || 'Objectif non défini'}</span>
                   </div>

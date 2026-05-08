@@ -25,6 +25,16 @@ const toDateKey = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
+// Format a YYYY-MM-DD birth date as DD/MM/YYYY for display.
+const formatBirthDate = (birthDate?: string | null) => {
+  if (!birthDate) return null
+  const date = new Date(birthDate)
+  if (Number.isNaN(date.getTime())) return null
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month}/${date.getFullYear()}`
+}
+
 const formatSessionStatus = (status?: string | null) => {
   const normalized = String(status || 'planned').toLowerCase()
   if (normalized === 'completed') return 'Complétée'
@@ -261,10 +271,14 @@ export default function ClientsPage() {
                         </p>
                       </div>
                       
-                      <div className="mt-5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                      <div className="mt-5 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4">
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Poids</p>
                           <p className="text-sm font-semibold text-slate-800">{client.initial_weight_kg ? `${client.initial_weight_kg} kg` : '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Naissance</p>
+                          <p className="text-sm font-semibold text-slate-800">{formatBirthDate(client.birth_date) || '-'}</p>
                         </div>
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Séances / sem</p>

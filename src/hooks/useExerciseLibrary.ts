@@ -19,6 +19,7 @@ export interface Exercise {
   rest_time?: string | null
   intensity?: string | null
   comment?: string | null
+  effort_detail?: string | null
   coach_id: string
   is_template: boolean
   program_id: string | null

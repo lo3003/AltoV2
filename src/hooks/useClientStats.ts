@@ -33,6 +33,12 @@ interface WeeklyWeightPoint {
   deltaKg: number | null
 }
 
+interface WeeklySessionPoint {
+  weekLabel: string
+  weekStart: string
+  count: number
+}
+
 export interface ExternalSessionPayload {
   name: string
   category: string
@@ -48,6 +54,7 @@ interface ClientStatsData {
   tableReady: boolean
   weightLogs: ClientWeightLog[]
   weeklyWeightPoints: WeeklyWeightPoint[]
+  weeklySessionPoints: WeeklySessionPoint[]
   thisWeekSessions: number
   thisMonthSessions: number
   latestProgramTitle: string | null
@@ -363,6 +370,35 @@ export function useClientStats(clientId?: string | number | null): ClientStatsDa
     })
   }, [weightLogs, initialWeightKg, clientId])
 
+  // Bucket completed workouts into the last 12 weeks (same windowing as weight chart).
+  const weeklySessionPoints = useMemo<WeeklySessionPoint[]>(() => {
+    if (workoutLogs.length === 0) return []
+
+    const counts = new Map<string, number>()
+    workoutLogs.forEach((log) => {
+      const date = new Date(log.completed_at)
+      if (Number.isNaN(date.getTime())) return
+      const weekStart = getWeekStart(date)
+      const key = toDateKey(weekStart)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+
+    // Build the last 12 contiguous weeks (including zeros) so the chart is stable.
+    const weeks: Array<{ key: string; date: Date }> = []
+    const firstWeek = getWeekStart(new Date())
+    for (let i = 11; i >= 0; i -= 1) {
+      const d = new Date(firstWeek)
+      d.setDate(d.getDate() - i * 7)
+      weeks.push({ key: toDateKey(d), date: d })
+    }
+
+    return weeks.map(({ key, date }) => ({
+      weekStart: key,
+      weekLabel: formatWeekLabel(date),
+      count: counts.get(key) ?? 0,
+    }))
+  }, [workoutLogs])
+
   return {
     loading,
     savingWeight,
@@ -371,6 +407,7 @@ export function useClientStats(clientId?: string | number | null): ClientStatsDa
     tableReady,
     weightLogs,
     weeklyWeightPoints,
+    weeklySessionPoints,
     thisWeekSessions,
     thisMonthSessions,
     latestProgramTitle,

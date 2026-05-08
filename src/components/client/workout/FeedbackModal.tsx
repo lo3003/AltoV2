@@ -15,15 +15,16 @@ import { Camera, Trophy, Clock, Dumbbell, X, Loader2 } from 'lucide-react'
 import { useWorkoutPreview } from '@/hooks/useWorkoutPreview'
 
 /* -------------------------------------------------------------------------- */
-/*  Ratings — order from the easiest (1) to the hardest (5), per spec PDF     */
+/*  Ratings — DB values stay 1=Très facile … 5=Très difficile.                */
+/*  Visual order is REVERSED: "Très difficile" affiché à gauche.              */
 /* -------------------------------------------------------------------------- */
 
 const RATINGS: Array<{ value: number; emoji: string; label: string; tone: string }> = [
-  { value: 1, emoji: '😎', label: 'Très facile', tone: 'bg-emerald-50 ring-emerald-200 text-emerald-700' },
-  { value: 2, emoji: '😊', label: 'Facile', tone: 'bg-emerald-50 ring-emerald-200 text-emerald-700' },
-  { value: 3, emoji: '🙂', label: 'Normal', tone: 'bg-slate-50 ring-slate-200 text-slate-700' },
-  { value: 4, emoji: '😟', label: 'Difficile', tone: 'bg-amber-50 ring-amber-200 text-amber-700' },
   { value: 5, emoji: '😩', label: 'Très difficile', tone: 'bg-rose-50 ring-rose-200 text-rose-700' },
+  { value: 4, emoji: '😟', label: 'Difficile', tone: 'bg-amber-50 ring-amber-200 text-amber-700' },
+  { value: 3, emoji: '🙂', label: 'Normal', tone: 'bg-slate-50 ring-slate-200 text-slate-700' },
+  { value: 2, emoji: '😊', label: 'Facile', tone: 'bg-emerald-50 ring-emerald-200 text-emerald-700' },
+  { value: 1, emoji: '😎', label: 'Très facile', tone: 'bg-emerald-50 ring-emerald-200 text-emerald-700' },
 ]
 
 interface FeedbackModalProps {
@@ -248,8 +249,8 @@ export function FeedbackModal({
             </div>
 
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              <span>Très facile</span>
               <span>Très difficile</span>
+              <span>Très facile</span>
             </div>
 
             {selectedRating && (

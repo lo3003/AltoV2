@@ -14,6 +14,7 @@ export interface ProgramItem extends Exercise {
   tabata_rest?: number | null
   amrap_duration?: number | null
   set_details?: any[] | null
+  effort_detail?: string | null
 }
 
 export type ExecutionMode = 'Superset' | 'Circuit' | 'AMRAP' | 'EMOM' | 'Tabata'
@@ -431,6 +432,7 @@ export function useProgramEditor(
             tabata_rest: item.tabata_rest || null,
             amrap_duration: item.amrap_duration || null,
             set_details: item.set_details || null,
+            effort_detail: item.effort_detail || null,
           }
           return sanitizeData(rawItem)
         })

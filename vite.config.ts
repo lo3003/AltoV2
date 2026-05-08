@@ -69,13 +69,15 @@ export default defineConfig({
             },
           },
           {
-            // Supabase storage (exercise images, photos) — cache successful GETs
+            // Supabase storage (exercise images, photos) — cache only valid 200 OK.
+            // We DO NOT cache opaque (status 0) or error responses, otherwise a
+            // transient upload failure could be served indefinitely from cache.
             urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/public\/.*/i,
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'supabase-public-storage',
               expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              cacheableResponse: { statuses: [0, 200] },
+              cacheableResponse: { statuses: [200] },
             },
           },
           {

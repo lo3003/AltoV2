@@ -200,36 +200,24 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
               </div>
             </div>
 
+            {/* Type de charge (unité) — petit sélecteur inline, sans valeur globale.
+                La valeur de charge se définit par série dans le panneau déroulant. */}
             <div className="text-center">
-               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Charge</p>
-               <div className="flex items-center gap-1">
-                 <Select
-                   value={item.charge_type || 'kg'}
-                   onValueChange={(val) => onUpdate(item.id, 'charge_type', val)}
-                 >
-                   <SelectTrigger className="h-9 w-[68px] rounded-lg bg-slate-50 border-slate-200 text-[11px] font-bold text-slate-700">
-                     <SelectValue />
-                   </SelectTrigger>
-                   <SelectContent>
-                     <SelectItem value="kg">kg</SelectItem>
-                     <SelectItem value="PDC">PDC</SelectItem>
-                     <SelectItem value="Nv">Niveau</SelectItem>
-                     <SelectItem value="none">Aucune</SelectItem>
-                   </SelectContent>
-                 </Select>
-                 {item.charge_type !== 'none' && item.charge_type !== 'PDC' && (
-                   <Input
-                     value={item.charge || ''}
-                     onChange={e => onUpdate(item.id, 'charge', e.target.value)}
-                     placeholder={item.charge_type === 'Nv' ? '3' : '50'}
-                     className="h-9 w-14 text-center text-sm font-bold rounded-lg border-slate-200"
-                   />
-                 )}
-               </div>
-            </div>
-            <div className="text-center">
-               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Rest</p>
-               <Input value={item.rest_time || ''} onChange={e => onUpdate(item.id, 'rest_time', e.target.value)} placeholder="01:30" className="h-9 w-20 text-center text-sm font-mono font-bold rounded-lg border-slate-200" />
+               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Unité</p>
+               <Select
+                 value={item.charge_type || 'kg'}
+                 onValueChange={(val) => onUpdate(item.id, 'charge_type', val)}
+               >
+                 <SelectTrigger className="h-9 w-[78px] rounded-lg bg-slate-50 border-slate-200 text-[11px] font-bold text-slate-700">
+                   <SelectValue />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="kg">kg</SelectItem>
+                   <SelectItem value="PDC">PDC</SelectItem>
+                   <SelectItem value="Nv">Niveau</SelectItem>
+                   <SelectItem value="none">Aucune</SelectItem>
+                 </SelectContent>
+               </Select>
             </div>
 
             <button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 transition-all mt-[18px] p-2">
@@ -248,6 +236,19 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
          </div>
        </div>
 
+       {/* Custom effort detail for cardio (free text: e.g. "5 min à 8 km/h, IC 4-5") */}
+       {item.type === 'Cardio' && (
+         <div className="mt-3 sm:ml-12 ml-0 flex items-center gap-2 bg-slate-50/70 rounded-xl px-3 py-2 border border-slate-100">
+           <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">Détail effort</span>
+           <Input
+             value={item.effort_detail || ''}
+             onChange={e => onUpdate(item.id, 'effort_detail', e.target.value)}
+             placeholder="Ex: 5 min à 8 km/h, IC 4-5"
+             className="h-8 flex-1 text-sm border-none shadow-none bg-transparent focus-visible:ring-1 focus-visible:ring-[#10b981]/30"
+           />
+         </div>
+       )}
+
        {isExpanded && numSets > 0 && (
          <div className="mt-5 pt-5 border-t border-slate-100 flex flex-col gap-3">
            {Array.from({ length: numSets }).map((_, index) => {
@@ -258,22 +259,32 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Série {index + 1}</span>
                  </div>
                  <div className="flex items-center gap-3 w-full flex-wrap">
+                   {/* Order: Charge | Réps | Récup */}
                    <div className="flex-1 flex items-center gap-2 bg-white rounded-lg p-1.5 border border-slate-100 min-w-[100px]">
-                     <span className="text-[10px] uppercase font-bold text-slate-400 w-10 sm:w-12 text-center">Reps</span>
-                     <Input 
-                       value={detail.reps !== undefined ? detail.reps : (item.reps || '')} 
+                     <span className="text-[10px] uppercase font-bold text-slate-400 w-12 sm:w-16 text-center">Charge</span>
+                     <Input
+                       value={detail.charge !== undefined ? detail.charge : (item.charge || '')}
+                       onChange={e => handleSetDetailChange(index, 'charge', e.target.value)}
+                       className="h-8 flex-1 text-center text-sm font-semibold border-none shadow-none focus-visible:ring-1 focus-visible:ring-[#10b981]/30 bg-transparent"
+                       placeholder={String(item.charge || '')}
+                     />
+                   </div>
+                   <div className="flex-1 flex items-center gap-2 bg-white rounded-lg p-1.5 border border-slate-100 min-w-[100px]">
+                     <span className="text-[10px] uppercase font-bold text-slate-400 w-10 sm:w-12 text-center">Réps</span>
+                     <Input
+                       value={detail.reps !== undefined ? detail.reps : (item.reps || '')}
                        onChange={e => handleSetDetailChange(index, 'reps', e.target.value)}
                        className="h-8 flex-1 text-center text-sm font-semibold border-none shadow-none focus-visible:ring-1 focus-visible:ring-[#10b981]/30 bg-transparent"
                        placeholder={String(item.reps || '')}
                      />
                    </div>
                    <div className="flex-1 flex items-center gap-2 bg-white rounded-lg p-1.5 border border-slate-100 min-w-[100px]">
-                     <span className="text-[10px] uppercase font-bold text-slate-400 w-12 sm:w-16 text-center">Charge</span>
-                     <Input 
-                       value={detail.charge !== undefined ? detail.charge : (item.charge || '')} 
-                       onChange={e => handleSetDetailChange(index, 'charge', e.target.value)}
+                     <span className="text-[10px] uppercase font-bold text-slate-400 w-10 sm:w-12 text-center">Récup</span>
+                     <Input
+                       value={detail.recup !== undefined ? detail.recup : (item.rest_time || '')}
+                       onChange={e => handleSetDetailChange(index, 'recup', e.target.value)}
                        className="h-8 flex-1 text-center text-sm font-semibold border-none shadow-none focus-visible:ring-1 focus-visible:ring-[#10b981]/30 bg-transparent"
-                       placeholder={String(item.charge || '')}
+                       placeholder={String(item.rest_time || '01:30')}
                      />
                    </div>
                  </div>

@@ -27,7 +27,20 @@ const toFormInput = (client: CoachClient): ClientFormInput => ({
   training_frequency: client.training_frequency || '',
   physical_issues: client.physical_issues || '',
   age: client.age != null ? String(client.age) : '',
+  birth_date: client.birth_date || '',
 })
+
+// Compute age from a YYYY-MM-DD birth_date. Returns null if invalid.
+function computeAgeFromBirthDate(birthDate: string): number | null {
+  if (!birthDate) return null
+  const date = new Date(birthDate)
+  if (Number.isNaN(date.getTime())) return null
+  const now = new Date()
+  let age = now.getFullYear() - date.getFullYear()
+  const m = now.getMonth() - date.getMonth()
+  if (m < 0 || (m === 0 && now.getDate() < date.getDate())) age--
+  return age >= 0 && age < 130 ? age : null
+}
 
 export function EditClientDialog({ open, client, onOpenChange, onSubmit, isSubmitting }: EditClientDialogProps) {
   const [formData, setFormData] = useState<ClientFormInput>({
@@ -42,6 +55,7 @@ export function EditClientDialog({ open, client, onOpenChange, onSubmit, isSubmi
     training_frequency: '',
     physical_issues: '',
     age: '',
+    birth_date: '',
   })
 
   useEffect(() => {
@@ -143,6 +157,27 @@ export function EditClientDialog({ open, client, onOpenChange, onSubmit, isSubmi
               </div>
 
               <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor="edit-birth-date">
+                  Date de naissance
+                  {computeAgeFromBirthDate(formData.birth_date) !== null && (
+                    <span className="ml-2 text-xs font-normal text-slate-400">
+                      ({computeAgeFromBirthDate(formData.birth_date)} ans)
+                    </span>
+                  )}
+                </Label>
+                <Input
+                  id="edit-birth-date"
+                  type="date"
+                  value={formData.birth_date}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(event) => handleFieldChange('birth_date', event.target.value)}
+                  className="h-10 rounded-xl border-slate-200 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
                 <Label htmlFor="edit-fitness-level">Niveau</Label>
                 <Select value={formData.fitness_level} onValueChange={(value) => handleFieldChange('fitness_level', value)}>
                   <SelectTrigger id="edit-fitness-level" className="h-10 w-full rounded-xl border-slate-200 bg-white">
@@ -154,6 +189,17 @@ export function EditClientDialog({ open, client, onOpenChange, onSubmit, isSubmi
                     <SelectItem value="Avancé">Avancé</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="edit-frequency">Séances / semaine</Label>
+                <Input
+                  id="edit-frequency"
+                  value={formData.training_frequency}
+                  onChange={(event) => handleFieldChange('training_frequency', event.target.value)}
+                  placeholder="3"
+                  className="h-10 rounded-xl border-slate-200 bg-white"
+                />
               </div>
             </div>
 
@@ -190,32 +236,6 @@ export function EditClientDialog({ open, client, onOpenChange, onSubmit, isSubmi
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="edit-age">Âge</Label>
-                <Input
-                  id="edit-age"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={formData.age}
-                  onChange={(event) => handleFieldChange('age', event.target.value)}
-                  placeholder="30"
-                  className="h-10 rounded-xl border-slate-200 bg-white"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="edit-frequency">Séances / semaine</Label>
-                <Input
-                  id="edit-frequency"
-                  value={formData.training_frequency}
-                  onChange={(event) => handleFieldChange('training_frequency', event.target.value)}
-                  placeholder="3"
-                  className="h-10 rounded-xl border-slate-200 bg-white"
-                />
-              </div>
-            </div>
           </div>
 
           <DialogFooter className="shrink-0 mx-0 mb-0 grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50/80 px-5 py-3 pb-safe sm:flex sm:rounded-b-3xl sm:px-6 sm:py-4 sm:pb-4">
