@@ -69,10 +69,19 @@ function SortableSoloExercise({ item, onUpdate, onDelete, onDuplicate, isGrouped
       {/* We need the inner to be sortable, the outer to be droppable.
           Drag listeners are applied on the WHOLE card so a long-press
           anywhere (mobile) or click+drag of 8px (desktop) starts the move.
-          On mobile, the TouchSensor requires a 400ms hold before triggering. */}
+          On mobile, the TouchSensor requires a 250ms hold before triggering.
+
+          touch-action: none disables iOS' default scroll-on-touch so the
+          long-press isn't pre-empted by the browser. The user can still scroll
+          the page by touching the gaps between cards or the header. */}
       <div
         ref={setNodeRef}
-        style={style}
+        style={{
+          ...style,
+          touchAction: 'none',
+          WebkitTouchCallout: 'none',
+          WebkitUserSelect: 'none',
+        }}
         {...attributes}
         {...listeners}
         className={`rounded-[24px] bg-white p-4 shadow-sm transition-all flex flex-col relative z-50 select-none ${isOver ? 'ring-2 ring-[#10b981]/50 bg-[#10b981]/5' : ''} ${isGrouped ? 'border border-slate-100 mb-2' : 'border border-slate-200 mb-4'}`}
@@ -347,7 +356,12 @@ function SortableSeparator({ item, onDelete, isFirst = false }: any) {
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{
+        ...style,
+        touchAction: 'none',
+        WebkitTouchCallout: 'none',
+        WebkitUserSelect: 'none',
+      }}
       {...attributes}
       {...listeners}
       className={`flex items-center gap-4 mb-4 select-none ${isFirst ? 'mt-0' : 'mt-8'}`}
@@ -618,9 +632,12 @@ export default function ProgramBuilder() {
   // DND Handlers
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    // Mobile: require a clear long-press (400ms) before drag activates,
-    // otherwise scrolling vertically would accidentally pick up an item.
-    useSensor(TouchSensor, { activationConstraint: { delay: 400, tolerance: 8 } })
+    // Mobile: require a clear long-press before drag activates, otherwise
+    // scrolling vertically would accidentally pick up an item.
+    // - delay 250ms feels responsive once the user gets used to it
+    // - tolerance 24px is generous for iOS where the finger micro-moves during
+    //   the press (otherwise the gesture is cancelled and the page scrolls).
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 24 } })
   )
 
   // Custom collision detection to handle both reordering and grouping

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react'
+import { getRememberMe, setRememberMe } from '@/lib/altoAuthStorage'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -17,6 +18,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [roleMode, setRoleMode] = useState<'client' | 'coach'>('client')
+  const [rememberMe, setRememberMeState] = useState<boolean>(() => getRememberMe())
   const activationMessage = (location.state as { activationMessage?: string } | null)?.activationMessage
 
   useEffect(() => {
@@ -38,6 +40,9 @@ export default function Login() {
 
     setIsLoading(true)
     try {
+      // Apply the remember-me preference BEFORE login() so the session lands
+      // in the correct storage from the start (localStorage vs sessionStorage).
+      setRememberMe(rememberMe)
       await login(email, password)
       toast.success('Connexion réussie !')
     } catch (err: unknown) {
@@ -172,6 +177,20 @@ export default function Login() {
                   </button>
                 </div>
               </div>
+
+              <label className="flex cursor-pointer select-none items-center gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMeState(e.target.checked)}
+                  disabled={isLoading}
+                  className="h-4 w-4 rounded border-slate-300 text-primary accent-[#10b981] focus:ring-2 focus:ring-primary/30"
+                />
+                <span className="font-medium text-slate-600">Rester connecté</span>
+                <span className="ml-auto text-[11px] text-slate-400">
+                  {rememberMe ? 'Reste connecté sur cet appareil' : 'Ne reste connecté que cette session'}
+                </span>
+              </label>
 
               <Button type="submit" className="h-12 w-full rounded-xl bg-[#10b981] text-base font-semibold shadow-lg shadow-emerald-500/20 hover:bg-[#059669]" disabled={isLoading}>
                 {isLoading ? (
