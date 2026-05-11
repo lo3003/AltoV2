@@ -9,7 +9,8 @@ import { toast } from 'sonner'
 import {
   ArrowLeft, Search, Dumbbell, Plus,
   GripVertical, Trash2, ChevronDown, ChevronUp, Link2, Repeat, Clock,
-  Library, X, ArrowUpAZ, ArrowDownAZ, Layers as LayersIcon, Sparkles, CheckCircle2
+  Library, X, ArrowUpAZ, ArrowDownAZ, Layers as LayersIcon, Sparkles, CheckCircle2,
+  Copy as CopyIcon,
 } from 'lucide-react'
 import { useExerciseLibrary } from '@/hooks/useExerciseLibrary'
 import { useProgramEditor, normalizeExecutionMode, type ExecutionMode } from '@/hooks/useProgramEditor'
@@ -38,7 +39,7 @@ import { CSS } from '@dnd-kit/utilities'
 /** 
  * Sortable Items Wrappers 
  */
-function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
+function SortableSoloExercise({ item, onUpdate, onDelete, onDuplicate, isGrouped }: any) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id })
   const style = { transform: CSS.Transform.toString(transform), transition }
 
@@ -200,25 +201,55 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
               </div>
             </div>
 
-            {/* Type de charge (unité) — petit sélecteur inline, sans valeur globale.
-                La valeur de charge se définit par série dans le panneau déroulant. */}
+            {/* Charge (valeur globale par défaut — sert de fallback aux séries) */}
             <div className="text-center">
-               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Unité</p>
-               <Select
-                 value={item.charge_type || 'kg'}
-                 onValueChange={(val) => onUpdate(item.id, 'charge_type', val)}
-               >
-                 <SelectTrigger className="h-9 w-[78px] rounded-lg bg-slate-50 border-slate-200 text-[11px] font-bold text-slate-700">
-                   <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="kg">kg</SelectItem>
-                   <SelectItem value="PDC">PDC</SelectItem>
-                   <SelectItem value="Nv">Niveau</SelectItem>
-                   <SelectItem value="none">Aucune</SelectItem>
-                 </SelectContent>
-               </Select>
+               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Charge</p>
+               <div className="flex items-center gap-1">
+                 <Select
+                   value={item.charge_type || 'kg'}
+                   onValueChange={(val) => onUpdate(item.id, 'charge_type', val)}
+                 >
+                   <SelectTrigger className="h-9 w-[68px] rounded-lg bg-slate-50 border-slate-200 text-[11px] font-bold text-slate-700">
+                     <SelectValue />
+                   </SelectTrigger>
+                   <SelectContent>
+                     <SelectItem value="kg">kg</SelectItem>
+                     <SelectItem value="PDC">PDC</SelectItem>
+                     <SelectItem value="Nv">Niveau</SelectItem>
+                     <SelectItem value="none">Aucune</SelectItem>
+                   </SelectContent>
+                 </Select>
+                 {item.charge_type !== 'none' && item.charge_type !== 'PDC' && (
+                   <Input
+                     value={item.charge || ''}
+                     onChange={e => onUpdate(item.id, 'charge', e.target.value)}
+                     placeholder={item.charge_type === 'Nv' ? '3' : '50'}
+                     className="h-9 w-14 text-center text-sm font-bold rounded-lg border-slate-200"
+                   />
+                 )}
+               </div>
             </div>
+
+            {/* Repos par défaut (s'applique à toutes les séries sans valeur custom) */}
+            <div className="text-center">
+               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Repos</p>
+               <Input
+                 value={item.rest_time || ''}
+                 onChange={e => onUpdate(item.id, 'rest_time', e.target.value)}
+                 placeholder="01:30"
+                 className="h-9 w-20 text-center text-sm font-mono font-bold rounded-lg border-slate-200"
+               />
+            </div>
+
+            {onDuplicate && (
+              <button
+                onClick={() => onDuplicate(item.id)}
+                className="text-slate-300 hover:text-[#10b981] transition-all mt-[18px] p-2 hover:bg-[#10b981]/10 rounded-lg"
+                title="Dupliquer cet exercice (variante)"
+              >
+                <CopyIcon className="h-4 w-4" />
+              </button>
+            )}
 
             <button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 transition-all mt-[18px] p-2">
               <Trash2 className="h-4 w-4" />
@@ -248,6 +279,17 @@ function SortableSoloExercise({ item, onUpdate, onDelete, isGrouped }: any) {
            />
          </div>
        )}
+
+       {/* Comment per exercise (visible to the client in the preview) */}
+       <div className="mt-3 sm:ml-12 ml-0 flex items-start gap-2 bg-emerald-50/40 rounded-xl px-3 py-2 border border-emerald-100/60">
+         <span className="text-[10px] uppercase font-bold text-emerald-600 shrink-0 mt-1.5">Note coach</span>
+         <Input
+           value={item.comment || ''}
+           onChange={e => onUpdate(item.id, 'comment', e.target.value)}
+           placeholder="Ex: Garder le dos droit, descendre bien en bas"
+           className="h-8 flex-1 text-sm border-none shadow-none bg-transparent focus-visible:ring-1 focus-visible:ring-[#10b981]/30"
+         />
+       </div>
 
        {isExpanded && numSets > 0 && (
          <div className="mt-5 pt-5 border-t border-slate-100 flex flex-col gap-3">
@@ -461,6 +503,7 @@ export default function ProgramBuilder() {
       handleUpdateGroupField,
       handleAddItem,
       handleDeleteItem,
+      handleDuplicateItem,
       handleMoveItem,
       handleGroupItems,
       handleChangeExecutionMode,
@@ -1011,6 +1054,7 @@ export default function ProgramBuilder() {
                                         item={gi}
                                         onUpdate={handleUpdateItemField}
                                         onDelete={handleDeleteItem}
+                                        onDuplicate={handleDuplicateItem}
                                         isGrouped={true}
                                       />
                                     ))}
@@ -1033,11 +1077,12 @@ export default function ProgramBuilder() {
 
                           if (!item.superset_id) {
                             rendered.push(
-                              <SortableSoloExercise 
-                                key={item.id} 
-                                item={item} 
-                                onUpdate={handleUpdateItemField} 
-                                onDelete={handleDeleteItem} 
+                              <SortableSoloExercise
+                                key={item.id}
+                                item={item}
+                                onUpdate={handleUpdateItemField}
+                                onDelete={handleDeleteItem}
+                                onDuplicate={handleDuplicateItem}
                               />
                             );
                           }

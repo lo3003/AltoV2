@@ -277,6 +277,28 @@ export function useProgramEditor(
     markAsDirty()
   }
 
+  // Duplicate an exercise as a variant: keeps all parameters (sets, reps, charge,
+  // rest, comment, effort_detail, set_details…) but gets a new id and is inserted
+  // right after the original.
+  const handleDuplicateItem = (itemId: string) => {
+    const normalizedId = normalizeItemId(itemId)
+    setItems((prev) => {
+      const index = prev.findIndex((i) => normalizeItemId(i.id) === normalizedId)
+      if (index < 0) return prev
+      const source = prev[index]
+      const copy: ProgramItem = {
+        ...source,
+        id: crypto.randomUUID(),
+        // a duplicate must NOT inherit the supabase row id; treat as a fresh insert.
+        name: source.is_section_header ? source.name : `${source.name} (variante)`,
+      } as ProgramItem
+      const next = [...prev]
+      next.splice(index + 1, 0, copy)
+      return next
+    })
+    markAsDirty()
+  }
+
   const handleMoveItem = (oldIndex: number, newIndex: number) => {
     setItems((items) => {
       const copy = [...items]
@@ -433,6 +455,10 @@ export function useProgramEditor(
             amrap_duration: item.amrap_duration || null,
             set_details: item.set_details || null,
             effort_detail: item.effort_detail || null,
+            // Cardio-specific & metadata fields previously lost on save
+            duration_minutes: item.duration_minutes || null,
+            intensity: item.intensity || null,
+            comment: item.comment || null,
           }
           return sanitizeData(rawItem)
         })
@@ -532,6 +558,7 @@ export function useProgramEditor(
     handleUngroupItem,
     handleAddItem,
     handleDeleteItem,
+    handleDuplicateItem,
     handleMoveItem,
     handleGroupItems,
     handleSaveProgram,

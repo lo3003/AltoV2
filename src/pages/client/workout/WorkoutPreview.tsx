@@ -703,7 +703,11 @@ function SoloExerciseRow({ exercise, rounds, onZoom, compact = false }: Exercise
   const effort = getEffortDisplay(exercise)
   const charge = formatCharge(exercise)
   const rest = toDisplayText(exercise.rest_time)
-  const hasComment = Boolean(toDisplayText(exercise.comment))
+  const comment = toDisplayText(exercise.comment)
+  const effortDetail = toDisplayText((exercise as any).effort_detail)
+  const isCardio = String(exercise.type || '').toLowerCase() === 'cardio'
+  const duration = toDisplayText(exercise.duration_minutes)
+  const intensity = toDisplayText(exercise.intensity)
 
   return (
     <article
@@ -734,9 +738,9 @@ function SoloExerciseRow({ exercise, rounds, onZoom, compact = false }: Exercise
             <h3 className="text-[15px] font-bold leading-tight text-slate-900">
               {exercise.name}
             </h3>
-            {hasComment && (
+            {comment && (
               <span
-                title="Le coach a laissé un commentaire — appuie sur la photo pour le voir"
+                title="Voir le commentaire du coach"
                 className="ml-1 mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"
               >
                 <MessageCircle className="h-3.5 w-3.5" />
@@ -749,11 +753,37 @@ function SoloExerciseRow({ exercise, rounds, onZoom, compact = false }: Exercise
 
           {/* Stats grid */}
           <div className="mt-2.5 grid grid-cols-3 gap-1.5 sm:grid-cols-4">
-            <StatPill label="Séries" value={`${rounds}`} highlight />
-            <StatPill label={effort.label} value={effort.value} />
-            {charge && <StatPill label="Charge" value={charge} />}
-            {rest && <StatPill label="Repos" value={rest} />}
+            {isCardio ? (
+              <>
+                {duration && <StatPill label="Durée" value={duration} highlight />}
+                {intensity && <StatPill label="Intensité" value={intensity} />}
+                {charge && <StatPill label="Charge" value={charge} />}
+                {rest && <StatPill label="Repos" value={rest} />}
+              </>
+            ) : (
+              <>
+                <StatPill label="Séries" value={`${rounds}`} highlight />
+                <StatPill label={effort.label} value={effort.value} />
+                {charge && <StatPill label="Charge" value={charge} />}
+                {rest && <StatPill label="Repos" value={rest} />}
+              </>
+            )}
           </div>
+
+          {/* Effort detail (cardio free text, e.g. "5 min à 8 km/h, IC 4") */}
+          {effortDetail && (
+            <p className="mt-2 rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-medium leading-snug text-sky-800 ring-1 ring-sky-100">
+              {effortDetail}
+            </p>
+          )}
+
+          {/* Inline comment text — always visible (in addition to icon badge) */}
+          {comment && (
+            <p className="mt-2 rounded-lg bg-emerald-50/60 px-2.5 py-1.5 text-xs leading-snug text-slate-700 ring-1 ring-emerald-100">
+              <span className="font-bold text-emerald-700">Note du coach : </span>
+              {comment}
+            </p>
+          )}
         </div>
       </div>
     </article>
