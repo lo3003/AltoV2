@@ -37,6 +37,8 @@ export interface ClientProgram {
   current_day?: number
   current_week?: number
   progress_percentage?: number
+  always_accessible?: boolean
+  coach_instructions?: string | null
   programs: Program
 }
 
@@ -96,8 +98,19 @@ export function useClientDashboard(clientId: string | undefined): ClientDashboar
         const now = new Date()
         const validPrograms = programsData.filter((assignment: ClientProgram) => {
           if (!assignment.programs) return false
+          // Programs marked "always accessible" ignore the end date entirely.
+          if (assignment.always_accessible) return true
           if (assignment.end_date && new Date(assignment.end_date) < now) return false
           return true
+        })
+        // Pin always-accessible programs to the top, then by start_date desc.
+        validPrograms.sort((a: ClientProgram, b: ClientProgram) => {
+          const aPin = a.always_accessible ? 1 : 0
+          const bPin = b.always_accessible ? 1 : 0
+          if (aPin !== bPin) return bPin - aPin
+          const aDate = a.start_date || ''
+          const bDate = b.start_date || ''
+          return bDate.localeCompare(aDate)
         })
         setAssignedPrograms(validPrograms)
       }

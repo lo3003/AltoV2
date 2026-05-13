@@ -31,6 +31,7 @@ export function AssignProgramDialog({
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [coachInstructions, setCoachInstructions] = useState('')
+  const [alwaysAccessible, setAlwaysAccessible] = useState(false)
 
   // Show ALL programs (sorted by recent first) but mark the ones already
   // assigned to this client as disabled in the dropdown so the coach knows
@@ -63,6 +64,7 @@ export function AssignProgramDialog({
     setStartDate('')
     setEndDate('')
     setCoachInstructions('')
+    setAlwaysAccessible(false)
   }
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -78,21 +80,33 @@ export function AssignProgramDialog({
       return
     }
 
-    if (!startDate || !endDate) {
-      toast.error('Veuillez définir les dates de début et de fin.')
-      return
-    }
-
-    if (new Date(endDate) <= new Date(startDate)) {
-      toast.error('La date de fin doit être postérieure à la date de début.')
-      return
+    // For always-accessible programs, dates are optional. Fall back to today + 10y.
+    let effectiveStartDate = startDate
+    let effectiveEndDate = endDate
+    if (alwaysAccessible) {
+      if (!effectiveStartDate) effectiveStartDate = new Date().toISOString().slice(0, 10)
+      if (!effectiveEndDate) {
+        const tenYears = new Date()
+        tenYears.setFullYear(tenYears.getFullYear() + 10)
+        effectiveEndDate = tenYears.toISOString().slice(0, 10)
+      }
+    } else {
+      if (!effectiveStartDate || !effectiveEndDate) {
+        toast.error('Veuillez définir les dates de début et de fin.')
+        return
+      }
+      if (new Date(effectiveEndDate) <= new Date(effectiveStartDate)) {
+        toast.error('La date de fin doit être postérieure à la date de début.')
+        return
+      }
     }
 
     await onSubmit({
       programId: selectedProgramId,
-      startDate,
-      endDate,
+      startDate: effectiveStartDate,
+      endDate: effectiveEndDate,
       coachInstructions: coachInstructions.trim() || undefined,
+      alwaysAccessible,
     })
   }
 
@@ -145,28 +159,48 @@ export function AssignProgramDialog({
                   )}
                 </div>
 
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5 transition-colors hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={alwaysAccessible}
+                    onChange={(event) => setAlwaysAccessible(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-[#10b981] focus:ring-2 focus:ring-primary/30"
+                  />
+                  <span className="flex flex-col text-sm">
+                    <span className="font-bold text-slate-800">Toujours accessible</span>
+                    <span className="text-xs text-slate-500">
+                      Le programme reste épinglé en haut du dashboard du client, sans limite de date.
+                      Idéal pour les routines (mobilité, etc.).
+                    </span>
+                  </span>
+                </label>
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="grid gap-2">
-                    <Label htmlFor="assign-start-date">Date de début</Label>
+                    <Label htmlFor="assign-start-date">
+                      Date de début {alwaysAccessible && <span className="text-xs font-normal text-slate-400">(optionnelle)</span>}
+                    </Label>
                     <Input
                       id="assign-start-date"
                       type="date"
                       value={startDate}
                       onChange={(event) => setStartDate(event.target.value)}
                       className="h-10 rounded-xl border-slate-200 bg-white"
-                      required
+                      required={!alwaysAccessible}
                     />
                   </div>
 
                   <div className="grid gap-2">
-                    <Label htmlFor="assign-end-date">Date de fin</Label>
+                    <Label htmlFor="assign-end-date">
+                      Date de fin {alwaysAccessible && <span className="text-xs font-normal text-slate-400">(optionnelle)</span>}
+                    </Label>
                     <Input
                       id="assign-end-date"
                       type="date"
                       value={endDate}
                       onChange={(event) => setEndDate(event.target.value)}
                       className="h-10 rounded-xl border-slate-200 bg-white"
-                      required
+                      required={!alwaysAccessible}
                     />
                   </div>
                 </div>

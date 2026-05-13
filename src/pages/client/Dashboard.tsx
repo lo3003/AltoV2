@@ -23,6 +23,7 @@ import {
   MessageCircle,
   Trophy,
   Target,
+  Pin,
 } from 'lucide-react'
 
 export default function ClientDashboard() {
@@ -133,6 +134,9 @@ export default function ClientDashboard() {
           ) : (
             <EmptyProgramState />
           )}
+
+          {/* All assigned programs (including always-accessible) */}
+          <MyProgramsList programs={assignedPrograms} heroProgramId={heroProgram?.program_id} />
 
           {/* Weekly Progress */}
           <WeeklyProgressSection
@@ -815,5 +819,88 @@ function getWeekRange(reference: Date): { start: Date; end: Date } {
   end.setHours(23, 59, 59, 999)
 
   return { start, end }
+}
+
+// ──────────────────────────────────────────────
+// MyProgramsList — shows every assigned program (pinned + temporal) so the
+// client can launch any of them at any time. The hero / next-session program
+// is already featured at the top so we down-rank it in this list.
+// ──────────────────────────────────────────────
+
+function MyProgramsList({
+  programs,
+  heroProgramId,
+}: {
+  programs: ClientProgram[]
+  heroProgramId?: string | number | null
+}) {
+  const navigate = useNavigate()
+
+  if (programs.length === 0) return null
+
+  // Always show all assigned programs (the hero gets a "déjà à l'écran" tag
+  // but is still listed so the user can launch it from here too).
+  return (
+    <Card className="border-border/40 bg-white shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <Dumbbell className="h-4 w-4 text-primary" />
+          Mes programmes
+          <Badge variant="secondary" className="ml-auto bg-primary/10 text-primary">
+            {programs.length}
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="space-y-2 px-4 pb-4">
+        {programs.map((assignment) => {
+          const isHero = heroProgramId != null && String(assignment.program_id) === String(heroProgramId)
+          const exoCount = assignment.programs?.exercises?.filter((e) => !e.is_section_header).length || 0
+          const dateLabel = assignment.always_accessible
+            ? 'Toujours accessible'
+            : assignment.start_date && assignment.end_date
+              ? `Du ${formatShortDate(new Date(assignment.start_date))} au ${formatShortDate(new Date(assignment.end_date))}`
+              : null
+
+          return (
+            <button
+              key={String(assignment.id)}
+              type="button"
+              onClick={() => navigate(`/client/workout/${assignment.program_id}`)}
+              className="group flex w-full items-center gap-3 rounded-xl border border-slate-200/60 bg-white px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.03]"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                {assignment.always_accessible ? <Pin className="h-4 w-4" /> : <Dumbbell className="h-4 w-4" />}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-bold text-slate-900 group-hover:text-primary">
+                    {assignment.programs?.name || 'Programme'}
+                  </p>
+                  {assignment.always_accessible && (
+                    <Badge variant="outline" className="border-primary/30 bg-primary/5 px-1.5 py-0 text-[9px] font-bold uppercase tracking-wider text-primary">
+                      Épinglé
+                    </Badge>
+                  )}
+                  {isHero && !assignment.always_accessible && (
+                    <Badge variant="outline" className="border-amber-200 bg-amber-50 px-1.5 py-0 text-[9px] font-bold uppercase tracking-wider text-amber-700">
+                      En cours
+                    </Badge>
+                  )}
+                </div>
+                <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                  {exoCount} exercice{exoCount > 1 ? 's' : ''}
+                  {dateLabel && <span> · {dateLabel}</span>}
+                </p>
+              </div>
+
+              <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-primary" />
+            </button>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
 }
 

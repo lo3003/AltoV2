@@ -6,6 +6,7 @@ export interface AssignProgramInput {
   startDate: string
   endDate: string
   coachInstructions?: string
+  alwaysAccessible?: boolean
 }
 
 export interface ClientProgramAssignment {
@@ -38,6 +39,9 @@ export function useClientProgramAssignments() {
       if (trimmedNote) {
         baseRow.coach_instructions = trimmedNote
       }
+      if (payload.alwaysAccessible) {
+        baseRow.always_accessible = true
+      }
 
       let result = await supabase
         .from('client_programs')
@@ -45,14 +49,18 @@ export function useClientProgramAssignments() {
         .select('*')
         .single()
 
-      // Graceful fallback if migration hasn't been applied yet
+      // Graceful fallback if a column doesn't exist yet (older deployments).
       if (result.error) {
         const code = String(result.error.code || '')
         const message = String(result.error.message || '').toLowerCase()
-        const missingColumn = code === 'PGRST204' || code === '42703' || message.includes('coach_instructions')
+        const missingColumn =
+          code === 'PGRST204' ||
+          code === '42703' ||
+          message.includes('coach_instructions') ||
+          message.includes('always_accessible')
 
-        if (missingColumn && trimmedNote) {
-          const { coach_instructions, ...legacyRow } = baseRow
+        if (missingColumn) {
+          const { coach_instructions, always_accessible, ...legacyRow } = baseRow
           result = await supabase
             .from('client_programs')
             .insert(legacyRow)
