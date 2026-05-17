@@ -5,12 +5,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import {
   ArrowLeft, Search, Dumbbell, Plus,
   GripVertical, Trash2, ChevronDown, ChevronUp, Link2, Repeat, Clock,
   Library, X, ArrowUpAZ, ArrowDownAZ, Layers as LayersIcon, Sparkles, CheckCircle2,
-  Copy as CopyIcon,
+  Copy as CopyIcon, SlidersHorizontal,
 } from 'lucide-react'
 import { useExerciseLibrary } from '@/hooks/useExerciseLibrary'
 import { useProgramEditor, normalizeExecutionMode, type ExecutionMode } from '@/hooks/useProgramEditor'
@@ -39,7 +40,16 @@ import { CSS } from '@dnd-kit/utilities'
 /** 
  * Sortable Items Wrappers 
  */
-function SortableSoloExercise({ item, onUpdate, onDelete, onDuplicate, isGrouped }: any) {
+function SortableSoloExercise({
+  item,
+  onUpdate,
+  onDelete,
+  onDuplicate,
+  onRequestAddVariant,
+  onUpdateVariant,
+  onRemoveVariant,
+  isGrouped,
+}: any) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id })
   const style = { transform: CSS.Transform.toString(transform), transition }
 
@@ -66,29 +76,23 @@ function SortableSoloExercise({ item, onUpdate, onDelete, onDuplicate, isGrouped
 
   return (
     <div ref={setDropRef} className="relative">
-      {/* We need the inner to be sortable, the outer to be droppable.
-          Drag listeners are applied on the WHOLE card so a long-press
-          anywhere (mobile) or click+drag of 8px (desktop) starts the move.
-          On mobile, the TouchSensor requires a 250ms hold before triggering.
-
-          touch-action: none disables iOS' default scroll-on-touch so the
-          long-press isn't pre-empted by the browser. The user can still scroll
-          the page by touching the gaps between cards or the header. */}
+      {/* The drag listeners live ONLY on the grip handle (⠿), not the whole card.
+          → On PC: delete / inputs / buttons are fully clickable, no drag interference.
+          → On mobile: the page scrolls freely; drag only starts from the handle. */}
       <div
         ref={setNodeRef}
-        style={{
-          ...style,
-          touchAction: 'none',
-          WebkitTouchCallout: 'none',
-          WebkitUserSelect: 'none',
-        }}
-        {...attributes}
-        {...listeners}
-        className={`rounded-[24px] bg-white p-4 shadow-sm transition-all flex flex-col relative z-50 select-none ${isOver ? 'ring-2 ring-[#10b981]/50 bg-[#10b981]/5' : ''} ${isGrouped ? 'border border-slate-100 mb-2' : 'border border-slate-200 mb-4'}`}
+        style={style}
+        className={`rounded-[24px] bg-white p-4 shadow-sm transition-all flex flex-col relative z-50 ${isOver ? 'ring-2 ring-[#10b981]/50 bg-[#10b981]/5' : ''} ${isGrouped ? 'border border-slate-100 mb-2' : 'border border-slate-200 mb-4'}`}
       >
        <div className="flex items-center justify-between gap-4 flex-wrap">
          <div className="flex items-center gap-4">
-            <span className="text-slate-300 p-1 cursor-grab active:cursor-grabbing" aria-hidden>
+            <span
+              {...attributes}
+              {...listeners}
+              style={{ touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+              className="-m-1 cursor-grab touch-none rounded-lg p-2 text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
+              title="Glisser pour déplacer"
+            >
               <GripVertical className="h-5 w-5" />
             </span>
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 shrink-0 border border-slate-200/50 overflow-hidden relative">
@@ -104,7 +108,7 @@ function SortableSoloExercise({ item, onUpdate, onDelete, onDuplicate, isGrouped
             </div>
          </div>
 
-         <div className="flex items-center gap-2 flex-wrap sm:gap-4 sm:ml-auto sm:flex-nowrap">
+         <div className="flex items-center gap-2 flex-wrap sm:gap-3 sm:ml-auto">
             <div className="text-center">
               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Sets</p>
               <Input value={item.sets || ''} onChange={e => {
@@ -252,7 +256,8 @@ function SortableSoloExercise({ item, onUpdate, onDelete, onDuplicate, isGrouped
 
             {onDuplicate && (
               <button
-                onClick={() => onDuplicate(item.id)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onDuplicate(item.id) }}
                 className="text-slate-300 hover:text-[#10b981] transition-all mt-[18px] p-2 hover:bg-[#10b981]/10 rounded-lg"
                 title="Dupliquer cet exercice (variante)"
               >
@@ -260,13 +265,18 @@ function SortableSoloExercise({ item, onUpdate, onDelete, onDuplicate, isGrouped
               </button>
             )}
 
-            <button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 transition-all mt-[18px] p-2">
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onDelete(item.id) }}
+              className="text-slate-300 hover:text-red-500 transition-all mt-[18px] p-2"
+            >
               <Trash2 className="h-4 w-4" />
             </button>
 
             {numSets > 0 && (
-              <button 
-                onClick={() => setIsExpanded(!isExpanded)} 
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded) }}
                 className="text-slate-400 hover:text-[#10b981] transition-all mt-[18px] p-2 hover:bg-[#10b981]/10 rounded-lg"
                 title="Détails des séries"
               >
@@ -344,7 +354,79 @@ function SortableSoloExercise({ item, onUpdate, onDelete, onDuplicate, isGrouped
            })}
          </div>
        )}
+
+       {/* ── Variantes d'exercice ────────────────────────────────────────── */}
+       {onRequestAddVariant && (
+         <div className="mt-3 sm:ml-12 ml-0">
+           {Array.isArray(item.variants) && item.variants.length > 0 && (
+             <div className="mb-2 flex flex-col gap-2">
+               {item.variants.map((variant: any) => (
+                 <div
+                   key={variant.id}
+                   className="rounded-xl border border-amber-200/70 bg-amber-50/50 p-2.5"
+                 >
+                   <div className="flex items-center gap-2">
+                     <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                     <Input
+                       value={variant.name || ''}
+                       onChange={(e) => onUpdateVariant(item.id, variant.id, 'name', e.target.value)}
+                       placeholder="Nom de la variante"
+                       className="h-8 flex-1 text-sm font-bold border-none shadow-none bg-transparent focus-visible:ring-1 focus-visible:ring-amber-400/40"
+                     />
+                     <button
+                       type="button"
+                       onClick={() => onRemoveVariant(item.id, variant.id)}
+                       className="rounded-lg p-1.5 text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-500"
+                       title="Retirer la variante"
+                     >
+                       <Trash2 className="h-3.5 w-3.5" />
+                     </button>
+                   </div>
+                   <div className="mt-2 flex flex-wrap items-center gap-2 pl-5">
+                     <VariantField label="Sets" value={variant.sets} onChange={(v) => onUpdateVariant(item.id, variant.id, 'sets', v)} />
+                     <VariantField label="Réps" value={variant.reps} onChange={(v) => onUpdateVariant(item.id, variant.id, 'reps', v)} />
+                     <VariantField label="Charge" value={variant.charge} onChange={(v) => onUpdateVariant(item.id, variant.id, 'charge', v)} wide />
+                     <VariantField label="Repos" value={variant.rest_time} onChange={(v) => onUpdateVariant(item.id, variant.id, 'rest_time', v)} wide />
+                   </div>
+                 </div>
+               ))}
+             </div>
+           )}
+           <button
+             type="button"
+             onClick={() => onRequestAddVariant(item.id)}
+             className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-amber-300 bg-amber-50/40 px-3 py-1.5 text-[11px] font-bold text-amber-700 transition-colors hover:bg-amber-50"
+           >
+             <Plus className="h-3.5 w-3.5" />
+             Ajouter une variante
+           </button>
+         </div>
+       )}
       </div>
+    </div>
+  )
+}
+
+// Petit champ inline pour éditer un paramètre de variante
+function VariantField({
+  label,
+  value,
+  onChange,
+  wide = false,
+}: {
+  label: string
+  value: any
+  onChange: (value: string) => void
+  wide?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-lg border border-amber-100 bg-white px-2 py-1">
+      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
+      <Input
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={`h-6 ${wide ? 'w-16' : 'w-10'} text-center text-xs font-semibold border-none shadow-none bg-transparent p-0 focus-visible:ring-1 focus-visible:ring-amber-400/40`}
+      />
     </div>
   )
 }
@@ -356,17 +438,16 @@ function SortableSeparator({ item, onDelete, isFirst = false }: any) {
   return (
     <div
       ref={setNodeRef}
-      style={{
-        ...style,
-        touchAction: 'none',
-        WebkitTouchCallout: 'none',
-        WebkitUserSelect: 'none',
-      }}
-      {...attributes}
-      {...listeners}
-      className={`flex items-center gap-4 mb-4 select-none ${isFirst ? 'mt-0' : 'mt-8'}`}
+      style={style}
+      className={`flex items-center gap-4 mb-4 ${isFirst ? 'mt-0' : 'mt-8'}`}
     >
-       <span className="text-slate-300 p-1 cursor-grab active:cursor-grabbing" aria-hidden>
+       <span
+         {...attributes}
+         {...listeners}
+         style={{ touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+         className="cursor-grab touch-none rounded-lg p-1 text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
+         title="Glisser pour déplacer"
+       >
           <GripVertical className="h-5 w-5" />
        </span>
        <div className="flex-1 h-px bg-slate-200"></div>
@@ -376,7 +457,6 @@ function SortableSeparator({ item, onDelete, isFirst = false }: any) {
        <div className="flex-1 h-px bg-slate-200"></div>
        <button
          onClick={(e) => { e.stopPropagation(); onDelete(item.id) }}
-         onPointerDown={(e) => e.stopPropagation()}
          className="text-slate-300 hover:text-red-500 transition-all p-2"
        >
          <Trash2 className="h-4 w-4" />
@@ -518,12 +598,19 @@ export default function ProgramBuilder() {
       handleAddItem,
       handleDeleteItem,
       handleDuplicateItem,
+      handleAddVariant,
+      handleUpdateVariant,
+      handleRemoveVariant,
       handleMoveItem,
       handleGroupItems,
       handleChangeExecutionMode,
       handleUngroupItem,
       handleSaveProgram,
   } = useProgramEditor(programId, undefined, { clientId })
+
+  // Variant picker — when set, a dialog lists library exercises to attach as a variant.
+  const [variantPickerForItemId, setVariantPickerForItemId] = useState<string | null>(null)
+  const [variantPickerQuery, setVariantPickerQuery] = useState('')
 
   // Track active drag for overlay
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
@@ -564,10 +651,7 @@ export default function ProgramBuilder() {
 
     let matchMuscle = true
     if (muscleFilter !== 'TOUT') {
-      const bp = (exo.body_part || '').toLowerCase()
-      if (muscleFilter === 'PECTORAUX' && !bp.includes('pect') && !bp.includes('chest')) matchMuscle = false
-      if (muscleFilter === 'DOS' && !bp.includes('dos') && !bp.includes('back')) matchMuscle = false
-      if (muscleFilter === 'JAMBES' && !bp.includes('jambe') && !bp.includes('leg') && !bp.includes('fess')) matchMuscle = false
+      matchMuscle = normalizeForCompare(exo.body_part) === normalizeForCompare(muscleFilter)
     }
 
     let matchType = true
@@ -577,6 +661,15 @@ export default function ProgramBuilder() {
 
     return matchSearch && matchMuscle && matchType
   })
+
+  // Distinct body zones present in the library (for the filter chips)
+  const bodyZones = Array.from(
+    new Set(
+      libraryExercises
+        .map((exo) => (exo.body_part || '').trim())
+        .filter((zone) => zone.length > 0)
+    )
+  ).sort((a, b) => a.localeCompare(b, 'fr'))
 
   // Sort library exercises (mobile sheet)
   const sortedLibrary = [...filteredLibrary].sort((a, b) => {
@@ -1072,6 +1165,9 @@ export default function ProgramBuilder() {
                                         onUpdate={handleUpdateItemField}
                                         onDelete={handleDeleteItem}
                                         onDuplicate={handleDuplicateItem}
+                                        onRequestAddVariant={setVariantPickerForItemId}
+                                        onUpdateVariant={handleUpdateVariant}
+                                        onRemoveVariant={handleRemoveVariant}
                                         isGrouped={true}
                                       />
                                     ))}
@@ -1100,6 +1196,9 @@ export default function ProgramBuilder() {
                                 onUpdate={handleUpdateItemField}
                                 onDelete={handleDeleteItem}
                                 onDuplicate={handleDuplicateItem}
+                                onRequestAddVariant={setVariantPickerForItemId}
+                                onUpdateVariant={handleUpdateVariant}
+                                onRemoveVariant={handleRemoveVariant}
                               />
                             );
                           }
@@ -1111,6 +1210,31 @@ export default function ProgramBuilder() {
                 </div>
               )}
             </CanvasDropZone>
+
+            {/* Durée estimée du programme — saisie par le coach, affichée au client */}
+            {items.length > 0 && (
+              <div className="mt-6 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#10b981]/10">
+                  <Clock className="h-4 w-4 text-[#10b981]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-900">Durée estimée de la séance</p>
+                  <p className="text-xs text-slate-500">Affichée au client dans l'aperçu du programme.</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="5"
+                    value={program.estimated_duration_minutes}
+                    onChange={(e) => handleProgramChange('estimated_duration_minutes', e.target.value)}
+                    placeholder="45"
+                    className="h-9 w-20 text-center text-sm font-bold rounded-lg border-slate-200"
+                  />
+                  <span className="text-sm font-semibold text-slate-500">min</span>
+                </div>
+              </div>
+            )}
           </div>
 
         {/* RIGHT ZONE: LA RESERVE (Library) — desktop only */}
@@ -1147,28 +1271,23 @@ export default function ProgramBuilder() {
               ))}
             </div>
 
-            {/* Muscle filters (legacy quick chips) */}
+            {/* Muscle filters — generated from the actual library data */}
             <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
                <Badge
                   onClick={() => setMuscleFilter('TOUT')}
                   variant={muscleFilter === 'TOUT' ? 'secondary' : 'outline'}
-                  className={`${muscleFilter === 'TOUT' ? 'bg-[#10b981] text-white shadow-sm hover:bg-[#059669]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} font-bold rounded-lg px-3 py-1 text-[10px] cursor-pointer`}
-                >ZONES</Badge>
-                <Badge 
-                  onClick={() => setMuscleFilter('PECTORAUX')}
-                  variant={muscleFilter === 'PECTORAUX' ? 'secondary' : 'outline'} 
-                  className={`${muscleFilter === 'PECTORAUX' ? 'bg-[#10b981] text-white shadow-sm hover:bg-[#059669]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} font-bold rounded-lg px-3 py-1 text-[10px] cursor-pointer`}
-                >PECTORAUX</Badge>
-                <Badge 
-                  onClick={() => setMuscleFilter('DOS')}
-                  variant={muscleFilter === 'DOS' ? 'secondary' : 'outline'} 
-                  className={`${muscleFilter === 'DOS' ? 'bg-[#10b981] text-white shadow-sm hover:bg-[#059669]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} font-bold rounded-lg px-3 py-1 text-[10px] cursor-pointer`}
-                >DOS</Badge>
-                <Badge 
-                  onClick={() => setMuscleFilter('JAMBES')}
-                  variant={muscleFilter === 'JAMBES' ? 'secondary' : 'outline'} 
-                  className={`${muscleFilter === 'JAMBES' ? 'bg-[#10b981] text-white shadow-sm hover:bg-[#059669]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} font-bold rounded-lg px-3 py-1 text-[10px] cursor-pointer`}
-                >JAMBES</Badge>
+                  className={`${muscleFilter === 'TOUT' ? 'bg-[#10b981] text-white shadow-sm hover:bg-[#059669]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} font-bold rounded-lg px-3 py-1 text-[10px] cursor-pointer whitespace-nowrap`}
+                >TOUTES ZONES</Badge>
+                {bodyZones.map((zone) => (
+                  <Badge
+                    key={zone}
+                    onClick={() => setMuscleFilter(zone)}
+                    variant={muscleFilter === zone ? 'secondary' : 'outline'}
+                    className={`${muscleFilter === zone ? 'bg-[#10b981] text-white shadow-sm hover:bg-[#059669]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} font-bold rounded-lg px-3 py-1 text-[10px] cursor-pointer whitespace-nowrap uppercase`}
+                  >
+                    {zone}
+                  </Badge>
+                ))}
             </div>
           </div>
           
@@ -1451,6 +1570,77 @@ export default function ProgramBuilder() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* ── Picker de variante ─────────────────────────────────────────── */}
+      <Dialog
+        open={variantPickerForItemId !== null}
+        onOpenChange={(open) => {
+          if (!open) { setVariantPickerForItemId(null); setVariantPickerQuery('') }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg rounded-3xl border-none p-0 shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+          <DialogHeader className="px-6 pt-6 shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-900">
+              <SlidersHorizontal className="h-5 w-5 text-amber-500" />
+              Choisir une variante
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-500">
+              Sélectionne l'exercice alternatif. Il hérite des paramètres de l'exercice de base (ajustables ensuite).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 pt-4 shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={variantPickerQuery}
+                onChange={(e) => setVariantPickerQuery(e.target.value)}
+                placeholder="Rechercher un exercice..."
+                className="h-10 rounded-xl bg-white pl-10"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+            <div className="grid gap-2">
+              {libraryExercises
+                .filter((exo) =>
+                  exo.name.toLowerCase().includes(variantPickerQuery.trim().toLowerCase())
+                )
+                .slice(0, 60)
+                .map((exo) => (
+                  <button
+                    key={exo.id}
+                    type="button"
+                    onClick={() => {
+                      if (variantPickerForItemId) handleAddVariant(variantPickerForItemId, exo)
+                      setVariantPickerForItemId(null)
+                      setVariantPickerQuery('')
+                      toast.success(`Variante « ${exo.name} » ajoutée`)
+                    }}
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5 text-left transition-colors hover:border-amber-300 hover:bg-amber-50/40"
+                  >
+                    <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-slate-100">
+                      {exo.photo_url ? (
+                        <img src={exo.photo_url} alt={exo.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <Dumbbell className="h-4 w-4 text-slate-300" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-900">{exo.name}</p>
+                      <p className="truncate text-xs text-slate-500">{exo.body_part || 'Toutes zones'}</p>
+                    </div>
+                    <Plus className="h-4 w-4 shrink-0 text-amber-500" />
+                  </button>
+                ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DragOverlay dropAnimation={null}>
         {activeDragId && activeDragData ? (

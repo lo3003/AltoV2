@@ -3,6 +3,27 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
 
+/**
+ * Variante d'exercice — alternative à faire si le client n'a pas le matériel.
+ * Hérite par défaut des paramètres de l'exercice de base, ajustables par le coach.
+ */
+export interface ExerciseVariant {
+  id: string // identifiant local (uuid) — pour les clés React
+  name: string
+  photo_url?: string | null
+  body_part?: string | null
+  sets?: string | number | null
+  reps?: string | number | null
+  charge?: string | number | null
+  charge_type?: string | null
+  rest_time?: string | null
+  effort_type?: string | null
+  reps_min?: number | null
+  reps_max?: number | null
+  duration_minutes?: string | null
+  comment?: string | null
+}
+
 export interface Exercise {
   id: string
   name: string
@@ -20,6 +41,7 @@ export interface Exercise {
   intensity?: string | null
   comment?: string | null
   effort_detail?: string | null
+  variants?: ExerciseVariant[] | null
   coach_id: string
   is_template: boolean
   program_id: string | null

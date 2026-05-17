@@ -120,10 +120,60 @@ export default function ClientStatsPage() {
 
       <CoachHoursCard
         loading={coachPackageLoading}
-        totalHours={coachPackage?.totalHours ?? null}
-        remainingHours={coachPackage?.remainingHours ?? null}
+        enabled={Boolean(coachPackage?.enabled)}
+        hasActivePackage={Boolean(coachPackage?.hasActivePackage)}
+        totalSessions={coachPackage?.totalSessions ?? null}
+        remainingSessions={coachPackage?.remainingSessions ?? null}
+        priceEur={coachPackage?.priceEur ?? null}
+        unitPriceEur={coachPackage?.unitPriceEur ?? null}
+        purchasedAt={coachPackage?.purchasedAt ?? null}
         coachName={coachPackage?.coachName ?? null}
       />
+
+      {/* Historique des séances présentielles avec le coach */}
+      {coachPackage?.enabled && coachPackage.sessions.length > 0 && (
+        <Card className="border-border/40 bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Trophy className="h-4 w-4 text-primary" />
+              Séances avec coach
+              <Badge variant="secondary" className="ml-auto bg-primary/10 text-primary">
+                {coachPackage.sessions.length}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {coachPackage.sessions.slice(0, 10).map((s) => {
+                const d = new Date(s.session_date)
+                const dateLabel = Number.isNaN(d.getTime())
+                  ? s.session_date
+                  : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+                return (
+                  <li
+                    key={s.id}
+                    className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/40 px-3 py-2.5"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+                      <Trophy className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900">{dateLabel}</span>
+                        <Badge variant="secondary" className="bg-primary/10 text-primary">
+                          {s.session_type}
+                        </Badge>
+                        <span className="text-xs text-slate-500">{s.duration_min} min</span>
+                      </div>
+                      {s.notes && <p className="mt-0.5 truncate text-xs text-slate-500">{s.notes}</p>}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:gap-4">
         <StatsCard

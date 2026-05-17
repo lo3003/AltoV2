@@ -128,7 +128,11 @@ export function useProgramEditor(
 ) {
   const { user } = useAuth()
   const scopedClientId = normalizeRelationalId(options?.clientId)
-  const [program, setProgram] = useState({ name: '', environment: 'Salle' })
+  const [program, setProgram] = useState<{
+    name: string
+    environment: string
+    estimated_duration_minutes: string
+  }>({ name: '', environment: 'Salle', estimated_duration_minutes: '' })
   const [items, setItems] = useState<ProgramItem[]>([])
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -159,6 +163,10 @@ export function useProgramEditor(
         setProgram({
           name: programData.name || '',
           environment: programData.environment || 'Salle',
+          estimated_duration_minutes:
+            programData.estimated_duration_minutes != null
+              ? String(programData.estimated_duration_minutes)
+              : '',
         })
         
         const { data: exercisesData, error: exError } = await supabase
@@ -299,6 +307,75 @@ export function useProgramEditor(
     markAsDirty()
   }
 
+  /* ---------------------------------------------------------------------- */
+  /*  Variantes d'exercice                                                   */
+  /* ---------------------------------------------------------------------- */
+
+  // Ajoute une variante à un exercice. La variante hérite par défaut des
+  // paramètres de l'exercice de BASE (sets/reps/charge/rest/effort).
+  const handleAddVariant = (baseItemId: string, picked: Exercise) => {
+    const normalizedId = normalizeItemId(baseItemId)
+    setItems((prev) =>
+      prev.map((item) => {
+        if (normalizeItemId(item.id) !== normalizedId) return item
+        const variant = {
+          id: crypto.randomUUID(),
+          name: picked.name,
+          photo_url: picked.photo_url ?? null,
+          body_part: picked.body_part ?? null,
+          // paramètres hérités de l'exercice de base
+          sets: item.sets ?? null,
+          reps: item.reps ?? null,
+          charge: item.charge ?? null,
+          charge_type: item.charge_type ?? 'kg',
+          rest_time: item.rest_time ?? null,
+          effort_type: item.effort_type ?? 'fixed',
+          reps_min: item.reps_min ?? null,
+          reps_max: item.reps_max ?? null,
+          duration_minutes: item.duration_minutes ?? null,
+          comment: '',
+        }
+        return { ...item, variants: [...(item.variants || []), variant] }
+      })
+    )
+    markAsDirty()
+  }
+
+  const handleUpdateVariant = (
+    baseItemId: string,
+    variantId: string,
+    field: string,
+    value: any
+  ) => {
+    const normalizedId = normalizeItemId(baseItemId)
+    setItems((prev) =>
+      prev.map((item) => {
+        if (normalizeItemId(item.id) !== normalizedId) return item
+        return {
+          ...item,
+          variants: (item.variants || []).map((v) =>
+            v.id === variantId ? { ...v, [field]: value } : v
+          ),
+        }
+      })
+    )
+    markAsDirty()
+  }
+
+  const handleRemoveVariant = (baseItemId: string, variantId: string) => {
+    const normalizedId = normalizeItemId(baseItemId)
+    setItems((prev) =>
+      prev.map((item) => {
+        if (normalizeItemId(item.id) !== normalizedId) return item
+        return {
+          ...item,
+          variants: (item.variants || []).filter((v) => v.id !== variantId),
+        }
+      })
+    )
+    markAsDirty()
+  }
+
   const handleMoveItem = (oldIndex: number, newIndex: number) => {
     setItems((items) => {
       const copy = [...items]
@@ -351,9 +428,15 @@ export function useProgramEditor(
         programId !== 'new' ? normalizeRelationalId(programId) : null
       let clonedFromProgramId: string | number | null = null
 
+      const estimatedDuration = (() => {
+        const parsed = Number(program.estimated_duration_minutes)
+        return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null
+      })()
+
       const programDataToSave = {
         name: program.name,
         environment: program.environment,
+        estimated_duration_minutes: estimatedDuration,
         coach_id: user.id,
         ...(scopedClientId ? { specific_client_id: scopedClientId } : {}),
       }
@@ -455,6 +538,7 @@ export function useProgramEditor(
             amrap_duration: item.amrap_duration || null,
             set_details: item.set_details || null,
             effort_detail: item.effort_detail || null,
+            variants: Array.isArray(item.variants) ? item.variants : [],
             // Cardio-specific & metadata fields previously lost on save
             duration_minutes: item.duration_minutes || null,
             intensity: item.intensity || null,
@@ -559,6 +643,9 @@ export function useProgramEditor(
     handleAddItem,
     handleDeleteItem,
     handleDuplicateItem,
+    handleAddVariant,
+    handleUpdateVariant,
+    handleRemoveVariant,
     handleMoveItem,
     handleGroupItems,
     handleSaveProgram,

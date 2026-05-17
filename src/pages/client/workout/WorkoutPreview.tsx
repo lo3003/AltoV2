@@ -74,6 +74,20 @@ const toDisplayText = (value?: string | number | null) => {
   return text.length > 0 ? text : null
 }
 
+// Normalise une durée saisie de façon hétérogène ("15", "15m", "5 min", "30s")
+// en libellé lisible. Un nombre seul est interprété comme des minutes.
+const formatDuration = (raw?: string | number | null): string => {
+  if (raw === null || raw === undefined) return ''
+  const text = String(raw).trim()
+  if (!text) return ''
+  // Déjà une unité explicite (min, m, s, ', ") → on garde, en normalisant "m" -> "min"
+  if (/[a-zA-Z'"]/.test(text)) {
+    return text.replace(/(\d)\s*m$/i, '$1 min')
+  }
+  // Nombre nu → minutes
+  return `${text} min`
+}
+
 const getEffortDisplay = (exercise: WorkoutExercise): { label: string; value: string } => {
   const effortType = normalizeText(exercise.effort_type)
 
@@ -83,7 +97,7 @@ const getEffortDisplay = (exercise: WorkoutExercise): { label: string; value: st
   if (effortType === 'max_time' || effortType.includes('max temps') || effortType.includes('max time')) {
     return {
       label: 'Effort',
-      value: exercise.duration_minutes ? `Max · ${exercise.duration_minutes}` : 'Max temps',
+      value: exercise.duration_minutes ? `Max · ${formatDuration(exercise.duration_minutes)}` : 'Max temps',
     }
   }
   if (effortType === 'intensity' && exercise.intensity) {
@@ -99,7 +113,7 @@ const getEffortDisplay = (exercise: WorkoutExercise): { label: string; value: st
     return { label: 'Reps', value: String(exercise.reps) }
   }
   if (exercise.duration_minutes) {
-    return { label: 'Durée', value: String(exercise.duration_minutes) }
+    return { label: 'Durée', value: formatDuration(exercise.duration_minutes) }
   }
   return { label: 'Reps', value: '—' }
 }
@@ -280,7 +294,7 @@ const groupColorClasses = (color: string) => {
 export default function WorkoutPreview() {
   const navigate = useNavigate()
   const { programId } = useParams<{ programId: string }>()
-  const { program, exercises, loading, error } = useWorkoutPreview(programId)
+  const { program, exercises, loading, error, accessDenied, accessDeniedReason, alwaysAccessible } = useWorkoutPreview(programId)
   const { client } = useClientProfile()
   const { sessions: scheduledSessions } = useClientCalendar(client?.id)
 
@@ -331,6 +345,12 @@ export default function WorkoutPreview() {
       return { kind: 'free' as const }
     }
 
+    // Programme épinglé "toujours accessible" → lancement libre, on ignore
+    // les séances planifiées (c'est une routine sans contrainte de date).
+    if (alwaysAccessible) {
+      return { kind: 'free' as const }
+    }
+
     const programSessions = scheduledSessions
       .filter(
         (s) =>
@@ -364,7 +384,7 @@ export default function WorkoutPreview() {
     // All planned sessions are in the past
     const lastPast = programSessions[programSessions.length - 1]
     return { kind: 'past' as const, session: lastPast }
-  }, [client?.id, programId, scheduledSessions])
+  }, [client?.id, programId, scheduledSessions, alwaysAccessible])
 
   const canLaunch = launchEligibility.kind === 'free' || launchEligibility.kind === 'today'
 
@@ -380,6 +400,34 @@ export default function WorkoutPreview() {
     return (
       <div className="min-h-[100dvh] bg-slate-50 px-4 py-12 text-center text-sm font-medium text-rose-600">
         {error || 'Séance introuvable.'}
+      </div>
+    )
+  }
+
+  // Accès refusé : programme déjà réalisé ou date de disponibilité dépassée.
+  if (accessDenied) {
+    const reasonText =
+      accessDeniedReason === 'completed'
+        ? 'Tu as déjà réalisé ce programme. Son détail n\'est plus consultable.'
+        : accessDeniedReason === 'expired'
+          ? 'La période de disponibilité de ce programme est terminée.'
+          : "Ce programme n'est plus disponible dans ton espace."
+    return (
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-slate-50 px-6 text-center">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-200">
+          <Lock className="h-7 w-7 text-slate-500" />
+        </div>
+        <h1 className="text-lg font-bold text-slate-900">{program.name}</h1>
+        <p className="mt-2 max-w-sm text-sm text-slate-500">{reasonText}</p>
+        <p className="mt-1 max-w-sm text-xs text-slate-400">
+          Le nom reste visible dans ton historique pour tes statistiques.
+        </p>
+        <Button
+          onClick={() => navigate('/client/dashboard')}
+          className="mt-5 h-11 rounded-xl bg-[#10b981] font-bold text-white hover:bg-[#059669]"
+        >
+          Retour à l'accueil
+        </Button>
       </div>
     )
   }
@@ -697,16 +745,20 @@ interface ExerciseRowProps {
   rounds: number
   onZoom: (src: string, alt: string, comment?: string | null) => void
   compact?: boolean
+  /** Quand l'exercice est dans un groupe, séries/repos sont affichés au niveau du groupe. */
+  inGroup?: boolean
 }
 
-function SoloExerciseRow({ exercise, rounds, onZoom, compact = false }: ExerciseRowProps) {
+function SoloExerciseRow({ exercise, rounds, onZoom, compact = false, inGroup = false }: ExerciseRowProps) {
   const effort = getEffortDisplay(exercise)
   const charge = formatCharge(exercise)
   const rest = toDisplayText(exercise.rest_time)
   const comment = toDisplayText(exercise.comment)
   const effortDetail = toDisplayText((exercise as any).effort_detail)
+  const variants = Array.isArray((exercise as any).variants) ? (exercise as any).variants : []
+  const [variantsOpen, setVariantsOpen] = useState(false)
   const isCardio = String(exercise.type || '').toLowerCase() === 'cardio'
-  const duration = toDisplayText(exercise.duration_minutes)
+  const duration = exercise.duration_minutes ? formatDuration(exercise.duration_minutes) : null
   const intensity = toDisplayText(exercise.intensity)
 
   return (
@@ -758,14 +810,15 @@ function SoloExerciseRow({ exercise, rounds, onZoom, compact = false }: Exercise
                 {duration && <StatPill label="Durée" value={duration} highlight />}
                 {intensity && <StatPill label="Intensité" value={intensity} />}
                 {charge && <StatPill label="Charge" value={charge} />}
-                {rest && <StatPill label="Repos" value={rest} />}
+                {!inGroup && rest && <StatPill label="Repos" value={rest} />}
               </>
             ) : (
               <>
-                <StatPill label="Séries" value={`${rounds}`} highlight />
+                {/* En groupe : séries + repos sont affichés dans l'en-tête du groupe */}
+                {!inGroup && <StatPill label="Séries" value={`${rounds}`} highlight />}
                 <StatPill label={effort.label} value={effort.value} />
                 {charge && <StatPill label="Charge" value={charge} />}
-                {rest && <StatPill label="Repos" value={rest} />}
+                {!inGroup && rest && <StatPill label="Repos" value={rest} />}
               </>
             )}
           </div>
@@ -784,6 +837,59 @@ function SoloExerciseRow({ exercise, rounds, onZoom, compact = false }: Exercise
               {comment}
             </p>
           )}
+
+          {/* Variantes disponibles — liste dépliable avec image */}
+          {variants.length > 0 && (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setVariantsOpen((p) => !p)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700 transition-colors hover:bg-amber-200"
+              >
+                <Repeat2 className="h-3 w-3" />
+                {variantsOpen
+                  ? 'Masquer les alternatives'
+                  : `${variants.length} alternative${variants.length > 1 ? 's' : ''} possible${variants.length > 1 ? 's' : ''}`}
+              </button>
+
+              {variantsOpen && (
+                <div className="mt-2 space-y-1.5">
+                  <p className="text-[11px] font-medium text-amber-700">
+                    Pas le matériel ? Tu peux faire à la place :
+                  </p>
+                  {variants.map((v: any) => (
+                    <div
+                      key={v.id}
+                      className="flex items-center gap-2.5 rounded-xl bg-amber-50/70 p-2 ring-1 ring-amber-100"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => v.photo_url && onZoom(v.photo_url, v.name, v.comment)}
+                        className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100"
+                      >
+                        <ExerciseImage
+                          src={v.photo_url}
+                          alt={v.name}
+                          className="h-full w-full object-cover"
+                          fallbackClassName="flex h-full w-full items-center justify-center bg-slate-100"
+                        />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-slate-900">{v.name}</p>
+                        <p className="truncate text-[11px] text-slate-500">
+                          {[
+                            v.sets ? `${v.sets} séries` : null,
+                            v.reps ? `${v.reps} reps` : null,
+                            v.rest_time ? `${v.rest_time} récup` : null,
+                          ].filter(Boolean).join(' · ') || v.body_part || 'Alternative'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </article>
@@ -800,9 +906,18 @@ function GroupBlockCard({ block, onZoom }: GroupBlockProps) {
   const Icon = mode.icon
   const colors = groupColorClasses(mode.color)
 
+  // Repos commun du groupe : on prend le premier rest_time renseigné parmi les exos.
+  const groupRest = (() => {
+    for (const ex of block.exercises) {
+      const r = toDisplayText(ex.rest_time)
+      if (r) return r
+    }
+    return null
+  })()
+
   return (
     <article className={`overflow-hidden rounded-2xl ring-1 ${colors.ring} ${colors.bg}`}>
-      {/* Group header */}
+      {/* Group header — récap complet : exos · séries · récup */}
       <div className="flex items-center justify-between gap-3 px-4 py-3 bg-white/60">
         <div className="flex items-center gap-2.5">
           <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${colors.accent} text-white shadow-sm`}>
@@ -813,7 +928,9 @@ function GroupBlockCard({ block, onZoom }: GroupBlockProps) {
               {mode.label}
             </p>
             <p className="text-[11px] font-medium text-slate-500">
-              {block.exercises.length} exos · {block.rounds} {block.rounds > 1 ? 'tours' : 'tour'}
+              {block.exercises.length} exercice{block.exercises.length > 1 ? 's' : ''}
+              {' · '}{block.rounds} {block.rounds > 1 ? 'séries' : 'série'}
+              {groupRest && <span> · {groupRest} récup</span>}
             </p>
           </div>
         </div>
@@ -822,7 +939,7 @@ function GroupBlockCard({ block, onZoom }: GroupBlockProps) {
         </Badge>
       </div>
 
-      {/* Members */}
+      {/* Members — séries/repos masqués (affichés au niveau du groupe) */}
       <div className="space-y-2 px-2 pb-2 pt-2 sm:px-3 sm:pb-3">
         {block.exercises.map((exercise, idx) => (
           <div key={String(exercise.id)} className="relative">
@@ -838,6 +955,7 @@ function GroupBlockCard({ block, onZoom }: GroupBlockProps) {
               rounds={toSetsCount(exercise.sets)}
               onZoom={onZoom}
               compact
+              inGroup
             />
           </div>
         ))}

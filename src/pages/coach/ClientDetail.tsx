@@ -17,6 +17,7 @@ import {
   Trash2,
   CheckCircle2,
   Loader2,
+  Receipt,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -39,6 +40,9 @@ import { toast } from 'sonner'
 import { EditClientDialog } from '@/components/coach/EditClientDialog'
 import { AssignProgramDialog } from '@/components/coach/AssignProgramDialog'
 import { ScheduleSessionDialog } from '@/components/coach/ScheduleSessionDialog'
+import { CreatePackageDialog } from '@/components/coach/CreatePackageDialog'
+import { AddPackageSessionDialog } from '@/components/coach/AddPackageSessionDialog'
+import { useCoachPackages, setClientPackageEnabled } from '@/hooks/useCoachPackages'
 import { useCoachPrograms } from '@/hooks/useCoachPrograms'
 import { useCoachClients, type ClientFormInput, type CoachClient } from '@/hooks/useCoachClients'
 import { useClientProgramAssignments, type AssignProgramInput } from '@/hooks/useClientProgramAssignments'
@@ -69,10 +73,13 @@ function formatBirthDateFr(birthDate?: string | null): string | null {
 
 interface AssignedProgramCard {
   id: string
+  /** id de la ligne client_programs (≠ id du programme) — requis pour l'update */
+  assignmentId: string
   name: string
   description?: string
   start_date?: string | null
   end_date?: string | null
+  alwaysAccessible: boolean
 }
 
 interface ProgramSessionProgress {
@@ -89,6 +96,7 @@ interface ClientProgramRow {
   program_id: string | number
   start_date?: string | null
   end_date?: string | null
+  always_accessible?: boolean | null
   programs?: {
     id: string | number
     name: string
@@ -333,23 +341,30 @@ export default function ClientDetail() {
   const fetchAssignedPrograms = useCallback(async () => {
     if (!id) return
 
-    const { data, error } = await supabase
-      .from('client_programs')
-      .select(`
-        id,
-        client_id,
-        program_id,
-        start_date,
-        end_date,
-        programs (
-          id,
-          name
-        )
-      `)
-      .eq('client_id', normalizeId(id))
-      .order('start_date', { ascending: false })
+    // `always_accessible` peut ne pas exister si la migration n'a pas été passée :
+    // on tente la colonne, et on retombe sur une requête sans en cas d'échec.
+    let data: ClientProgramRow[] | null = null
+    let queryError: any = null
+    {
+      const res = await supabase
+        .from('client_programs')
+        .select(`id, client_id, program_id, start_date, end_date, always_accessible, programs ( id, name )`)
+        .eq('client_id', normalizeId(id))
+        .order('start_date', { ascending: false })
+      if (res.error) {
+        const fallback = await supabase
+          .from('client_programs')
+          .select(`id, client_id, program_id, start_date, end_date, programs ( id, name )`)
+          .eq('client_id', normalizeId(id))
+          .order('start_date', { ascending: false })
+        data = fallback.data as ClientProgramRow[] | null
+        queryError = fallback.error
+      } else {
+        data = res.data as ClientProgramRow[] | null
+      }
+    }
 
-    if (error) throw error
+    if (queryError) throw queryError
 
     const mappedPrograms = ((data || []) as ClientProgramRow[]).reduce<AssignedProgramCard[]>((accumulator, row) => {
       const relatedProgram = Array.isArray(row.programs) ? row.programs[0] : row.programs
@@ -357,10 +372,12 @@ export default function ClientDetail() {
 
       accumulator.push({
         id: String(relatedProgram.id),
+        assignmentId: String(row.id),
         name: relatedProgram.name,
         description: relatedProgram.description || undefined,
         start_date: row.start_date || null,
         end_date: row.end_date || null,
+        alwaysAccessible: Boolean(row.always_accessible),
       })
 
       return accumulator
@@ -427,10 +444,12 @@ export default function ClientDetail() {
       if (selectedProgram) {
         const nextAssignedProgram: AssignedProgramCard = {
           id: String(selectedProgram.id),
+          assignmentId: String(assignment.id),
           name: selectedProgram.name,
           description: selectedProgram.description,
           start_date: assignment.start_date || payload.startDate,
           end_date: assignment.end_date || payload.endDate,
+          alwaysAccessible: Boolean(payload.alwaysAccessible),
         }
 
         setAssignedPrograms((prev) => [nextAssignedProgram, ...prev.filter((item) => item.id !== nextAssignedProgram.id)])
@@ -444,6 +463,37 @@ export default function ClientDetail() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erreur lors de l’assignation du programme.'
       toast.error(message)
+    }
+  }
+
+  // Bascule un programme déjà assigné en "toujours accessible" (ou l'inverse).
+  // Un programme toujours accessible reste lançable même si sa date est dépassée.
+  const handleToggleAlwaysAccessible = async (programCard: AssignedProgramCard) => {
+    const next = !programCard.alwaysAccessible
+    try {
+      const { error } = await supabase
+        .from('client_programs')
+        .update({ always_accessible: next })
+        .eq('id', programCard.assignmentId)
+      if (error) throw error
+
+      setAssignedPrograms((prev) =>
+        prev.map((item) =>
+          item.assignmentId === programCard.assignmentId ? { ...item, alwaysAccessible: next } : item
+        )
+      )
+      toast.success(
+        next
+          ? 'Programme rendu toujours accessible.'
+          : 'Programme limité à sa période de dates.'
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de modifier le réglage.'
+      toast.error(
+        /always_accessible/.test(message)
+          ? 'Migration manquante : exécute safe_always_accessible_programs.sql.'
+          : message
+      )
     }
   }
 
@@ -651,9 +701,10 @@ export default function ClientDetail() {
         <div className="px-4 py-5 lg:px-8 lg:py-8">
           <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200/60 sm:w-[480px]">
+              <TabsList className="grid w-full grid-cols-4 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200/60 sm:w-[600px]">
                 <TabsTrigger value="programs" className="rounded-xl text-xs font-bold data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none sm:text-sm">Programmes</TabsTrigger>
                 <TabsTrigger value="calendar" className="rounded-xl text-xs font-bold data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none sm:text-sm">Calendrier</TabsTrigger>
+                <TabsTrigger value="package" className="rounded-xl text-xs font-bold data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none sm:text-sm">Forfait</TabsTrigger>
                 <TabsTrigger value="history" className="rounded-xl text-xs font-bold data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none sm:text-sm">Historique</TabsTrigger>
               </TabsList>
 
@@ -778,6 +829,19 @@ export default function ClientDetail() {
                                         type="button"
                                         onClick={() => {
                                           setOpenMenuProgramId(null)
+                                          handleToggleAlwaysAccessible(program)
+                                        }}
+                                        className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-primary/5 hover:text-primary"
+                                      >
+                                        <CheckCircle2 className="h-4 w-4" />
+                                        {program.alwaysAccessible
+                                          ? 'Limiter aux dates'
+                                          : 'Rendre toujours accessible'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOpenMenuProgramId(null)
                                           setProgramToUnassign(program)
                                         }}
                                         className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2.5 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50"
@@ -792,12 +856,19 @@ export default function ClientDetail() {
                             </div>
                           </div>
 
-                          {/* Date range chip */}
-                          <div className="px-5">
+                          {/* Date range chip + always-accessible badge */}
+                          <div className="px-5 flex flex-wrap items-center gap-1.5">
                             <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                               <CalendarIcon className="h-3.5 w-3.5" />
-                              {formatProgramRange(program.start_date, program.end_date)}
+                              {program.alwaysAccessible
+                                ? 'Toujours accessible'
+                                : formatProgramRange(program.start_date, program.end_date)}
                             </div>
+                            {program.alwaysAccessible && (
+                              <Badge className="bg-primary/10 text-primary border-none text-[10px] font-extrabold uppercase tracking-wider">
+                                Épinglé
+                              </Badge>
+                            )}
                           </div>
 
                           {/* Progress section */}
@@ -1123,6 +1194,13 @@ export default function ClientDetail() {
                     )}
                   </div>
                 </div>
+              </TabsContent>
+
+              <TabsContent value="package" className="mt-8 space-y-5">
+                <ClientPackageTab
+                  client={client}
+                  onClientPatch={(patch) => setClient((prev) => prev ? { ...prev, ...patch } : prev)}
+                />
               </TabsContent>
 
               <TabsContent value="history" className="mt-8 space-y-4">
@@ -1451,6 +1529,334 @@ function CalendarStatCard({ label, value, accent }: CalendarStatCardProps) {
         {label}
       </p>
       <p className={`mt-1 text-2xl font-black tabular-nums ${tone.value}`}>{value}</p>
+    </div>
+  )
+}
+
+/* ============================================================================ */
+/*  ClientPackageTab — system de forfait (présentiel avec coach)                */
+/* ============================================================================ */
+
+function ClientPackageTab({
+  client,
+  onClientPatch,
+}: {
+  client: CoachClient
+  onClientPatch: (patch: Partial<CoachClient>) => void
+}) {
+  const enabled = Boolean(client.package_enabled)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [addSessionOpen, setAddSessionOpen] = useState(false)
+  const [togglingPackage, setTogglingPackage] = useState(false)
+
+  const {
+    loading,
+    saving,
+    activePackage,
+    pastPackages,
+    sessions,
+    remainingSessions,
+    pricePresets,
+    createPackage,
+    cancelPackage,
+    addSession,
+    removeSession,
+  } = useCoachPackages(enabled ? client.id : null)
+
+  const handleToggleEnabled = async (next: boolean) => {
+    setTogglingPackage(true)
+    try {
+      await setClientPackageEnabled(client.id, next)
+      onClientPatch({ package_enabled: next })
+      toast.success(next ? 'Forfait activé pour ce client.' : 'Forfait désactivé. Les séances seront offertes.')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de modifier le réglage.'
+      toast.error(message)
+    } finally {
+      setTogglingPackage(false)
+    }
+  }
+
+  const handleCancelPackage = async () => {
+    if (!activePackage) return
+    if (!window.confirm('Annuler ce forfait ? Cette action ne supprime pas les séances cochées.')) return
+    try {
+      await cancelPackage(activePackage.id)
+      toast.success('Forfait annulé.')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Impossible d'annuler le forfait."
+      toast.error(message)
+    }
+  }
+
+  const handleRemoveSession = async (sessionId: string) => {
+    if (!window.confirm('Supprimer cette séance ? Elle sera re-créditée sur le forfait.')) return
+    try {
+      await removeSession(sessionId)
+      toast.success('Séance supprimée. Le forfait a été re-crédité.')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de supprimer la séance.'
+      toast.error(message)
+    }
+  }
+
+  // Toggle disabled : show explanatory empty state
+  if (!enabled) {
+    return (
+      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200/60">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-100">
+            <Receipt className="h-5 w-5 text-slate-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-slate-900">Forfait désactivé</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Les séances en présentiel avec ce client sont actuellement <strong>offertes</strong> (aucun suivi de forfait).
+              Active le forfait pour commencer à comptabiliser les séances payantes.
+            </p>
+            <Button
+              onClick={() => handleToggleEnabled(true)}
+              disabled={togglingPackage}
+              className="mt-4 h-10 gap-2 rounded-xl bg-[#10b981] font-bold text-white hover:bg-[#059669]"
+            >
+              <Receipt className="h-4 w-4" />
+              {togglingPackage ? 'Activation...' : 'Activer le forfait pour ce client'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="h-32 animate-pulse rounded-3xl bg-slate-100" />
+        <div className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Toggle on/off + résumé */}
+      <div className="flex items-center justify-between rounded-2xl bg-white px-5 py-4 ring-1 ring-slate-200/60 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+            <Receipt className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-900">Système de forfait actif</p>
+            <p className="text-xs text-slate-500">Les séances présentielles sont comptabilisées.</p>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleToggleEnabled(false)}
+          disabled={togglingPackage}
+          className="text-xs font-bold text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+        >
+          Désactiver
+        </Button>
+      </div>
+
+      {/* Forfait actif */}
+      {activePackage ? (
+        <div className="rounded-3xl bg-gradient-to-br from-[#10b981] to-[#059669] p-6 text-white shadow-lg">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest opacity-90">Forfait en cours</p>
+              <p className="mt-2 text-4xl font-black">
+                {remainingSessions} <span className="text-xl font-bold opacity-80">/ {activePackage.total_sessions}</span>
+              </p>
+              <p className="mt-1 text-sm font-semibold opacity-90">
+                séance{(remainingSessions ?? 0) > 1 ? 's' : ''} restante{(remainingSessions ?? 0) > 1 ? 's' : ''}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-black">{Number(activePackage.price_eur).toFixed(2)}€</p>
+              <p className="mt-1 text-xs font-semibold opacity-90">
+                soit {Number(activePackage.unit_price_eur).toFixed(2)}€/séance
+              </p>
+            </div>
+          </div>
+
+          {/* Jauge */}
+          <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-white/20">
+            <div
+              className="h-full rounded-full bg-white transition-all"
+              style={{
+                width: `${Math.max(0, Math.min(100, ((remainingSessions ?? 0) / activePackage.total_sessions) * 100))}%`,
+              }}
+            />
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button
+              onClick={() => setAddSessionOpen(true)}
+              disabled={(remainingSessions ?? 0) <= 0 || saving}
+              className="h-10 gap-1.5 rounded-xl bg-white font-bold text-emerald-700 hover:bg-white/90"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Cocher une séance
+            </Button>
+            <Button
+              onClick={handleCancelPackage}
+              disabled={saving}
+              variant="ghost"
+              className="h-10 rounded-xl border border-white/30 bg-transparent font-bold text-white hover:bg-white/10"
+            >
+              Annuler le forfait
+            </Button>
+          </div>
+
+          <p className="mt-4 text-xs opacity-80">
+            Acheté le {formatBirthDateFr(activePackage.purchased_at) || activePackage.purchased_at}
+            {activePackage.notes && <span> · {activePackage.notes}</span>}
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-3xl border-2 border-dashed border-primary/30 bg-white py-10 text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+            <Receipt className="h-6 w-6 text-primary" />
+          </div>
+          <p className="text-base font-bold text-slate-700">Aucun forfait actif</p>
+          <p className="mt-1 text-sm text-slate-500">Encode un nouveau forfait pour ce client.</p>
+          <Button
+            onClick={() => setCreateOpen(true)}
+            className="mt-4 h-11 gap-2 rounded-xl bg-[#10b981] font-bold text-white hover:bg-[#059669]"
+          >
+            <Plus className="h-4 w-4" />
+            Encoder un forfait
+          </Button>
+        </div>
+      )}
+
+      {/* Bouton si forfait actif aussi possible de re-créer un autre une fois terminé */}
+      {!activePackage && pastPackages.length > 0 && (
+        <Button
+          onClick={() => setCreateOpen(true)}
+          variant="outline"
+          className="h-10 gap-2 rounded-xl border-primary/30 font-bold text-primary hover:bg-primary/5"
+        >
+          <Plus className="h-4 w-4" />
+          Nouveau forfait
+        </Button>
+      )}
+
+      {/* Historique des séances cochées (du forfait actif) */}
+      {activePackage && (
+        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200/60">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-bold text-slate-900">Séances réalisées</h3>
+            <Badge variant="secondary" className="bg-slate-100 text-slate-600">
+              {sessions.filter((s) => s.package_id === activePackage.id).length}
+            </Badge>
+          </div>
+
+          {sessions.filter((s) => s.package_id === activePackage.id).length === 0 ? (
+            <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-sm text-slate-500">
+              Aucune séance cochée pour ce forfait pour le moment.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {sessions
+                .filter((s) => s.package_id === activePackage.id)
+                .map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/40 px-3 py-2.5"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900">
+                          {formatBirthDateFr(s.session_date) || s.session_date}
+                        </span>
+                        <Badge variant="secondary" className="bg-primary/10 text-primary">
+                          {s.session_type}
+                        </Badge>
+                        <span className="text-xs text-slate-500">{s.duration_min} min</span>
+                      </div>
+                      {s.notes && <p className="mt-0.5 truncate text-xs text-slate-500">{s.notes}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSession(s.id)}
+                      className="rounded-lg p-1.5 text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-500"
+                      title="Supprimer cette séance"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Historique des forfaits passés */}
+      {pastPackages.length > 0 && (
+        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200/60">
+          <h3 className="mb-3 text-base font-bold text-slate-900">Anciens forfaits</h3>
+          <ul className="space-y-2">
+            {pastPackages.map((p) => {
+              const usedSessions = sessions.filter((s) => s.package_id === p.id).length
+              return (
+                <li key={p.id} className="rounded-xl border border-slate-100 bg-slate-50/40 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">
+                        {usedSessions} / {p.total_sessions} séances · {Number(p.price_eur).toFixed(2)}€
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Acheté le {formatBirthDateFr(p.purchased_at) || p.purchased_at}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className={
+                        p.status === 'finished'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-rose-50 text-rose-700'
+                      }
+                    >
+                      {p.status === 'finished' ? 'Terminé' : 'Annulé'}
+                    </Badge>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
+      <CreatePackageDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        presets={pricePresets}
+        saving={saving}
+        clientName={client.full_name}
+        onSubmit={async (payload) => {
+          await createPackage(payload)
+          toast.success('Forfait créé.')
+        }}
+      />
+
+      <AddPackageSessionDialog
+        open={addSessionOpen}
+        onOpenChange={setAddSessionOpen}
+        packageId={activePackage?.id ?? null}
+        remainingSessions={remainingSessions}
+        saving={saving}
+        onSubmit={async (payload) => {
+          await addSession(payload)
+          toast.success('Séance enregistrée.')
+        }}
+      />
     </div>
   )
 }

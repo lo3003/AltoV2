@@ -20,6 +20,7 @@ export interface CoachClient {
   age?: number | null
   birth_date?: string | null
   avatar_url?: string | null
+  package_enabled?: boolean | null
   created_at?: string
 }
 

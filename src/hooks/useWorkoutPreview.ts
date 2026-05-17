@@ -17,6 +17,22 @@ interface UseWorkoutPreviewResult {
   exercises: WorkoutExercise[]
   loading: boolean
   error: string | null
+  /**
+   * true quand le client n'a plus le droit de consulter le détail du programme :
+   *  - programme déjà réalisé (un workout_log existe), OU
+   *  - date de disponibilité dépassée.
+   * Le coach propriétaire n'est jamais bloqué. Les programmes "toujours
+   * accessibles" ne sont jamais bloqués non plus.
+   */
+  accessDenied: boolean
+  accessDeniedReason: 'completed' | 'expired' | 'not_assigned' | null
+  /** true si l'assignation est marquée "toujours accessible" → lancement libre. */
+  alwaysAccessible: boolean
+}
+
+const todayKey = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 const sortByOrder = (items: WorkoutExercise[]) => {
@@ -42,6 +58,10 @@ export function useWorkoutPreview(programId?: string): UseWorkoutPreviewResult {
   const [exercises, setExercises] = useState<WorkoutExercise[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [accessDenied, setAccessDenied] = useState(false)
+  const [accessDeniedReason, setAccessDeniedReason] =
+    useState<'completed' | 'expired' | 'not_assigned' | null>(null)
+  const [alwaysAccessible, setAlwaysAccessible] = useState(false)
 
   const fetchPreview = useCallback(async () => {
     if (!programId) {
@@ -53,6 +73,9 @@ export function useWorkoutPreview(programId?: string): UseWorkoutPreviewResult {
 
     setLoading(true)
     setError(null)
+    setAccessDenied(false)
+    setAccessDeniedReason(null)
+    setAlwaysAccessible(false)
 
     try {
       const { data: programRow, error: programError } = await supabase
@@ -64,25 +87,56 @@ export function useWorkoutPreview(programId?: string): UseWorkoutPreviewResult {
       if (programError) throw programError
 
       const row = (programRow || {}) as Record<string, unknown>
+      const programCoachId = row.coach_id ? String(row.coach_id) : null
+      const isCoachOwner = Boolean(user?.id && programCoachId && user.id === programCoachId)
 
       // Try to load assignment-level coach instructions for the current client.
       // Silent failure if migration not applied or user is the coach previewing.
       let assignmentInstructions: string | null = null
-      if (user?.id) {
+      if (user?.id && !isCoachOwner) {
         try {
           const { data: clientRow } = await supabase
             .from('clients')
             .select('id')
             .eq('auth_user_id', user.id)
             .maybeSingle()
+
           if (clientRow?.id) {
             const { data: assignmentRow } = await supabase
               .from('client_programs')
-              .select('coach_instructions')
+              .select('coach_instructions, end_date, always_accessible')
               .eq('client_id', clientRow.id)
               .eq('program_id', programId)
               .maybeSingle()
+
             assignmentInstructions = toNullableString(assignmentRow?.coach_instructions)
+
+            // ── Contrôle d'accès client ────────────────────────────────
+            if (assignmentRow?.always_accessible) {
+              setAlwaysAccessible(true)
+            }
+            if (!assignmentRow) {
+              // Programme non (ou plus) assigné à ce client
+              setAccessDenied(true)
+              setAccessDeniedReason('not_assigned')
+            } else if (!assignmentRow.always_accessible) {
+              // 1) Date de disponibilité dépassée
+              if (assignmentRow.end_date && String(assignmentRow.end_date) < todayKey()) {
+                setAccessDenied(true)
+                setAccessDeniedReason('expired')
+              } else {
+                // 2) Programme déjà réalisé (un workout_log existe)
+                const { count } = await supabase
+                  .from('workout_logs')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('client_id', clientRow.id)
+                  .eq('program_id', programId)
+                if ((count ?? 0) > 0) {
+                  setAccessDenied(true)
+                  setAccessDeniedReason('completed')
+                }
+              }
+            }
           }
         } catch {
           // Ignore — column missing or RLS rejected
@@ -126,7 +180,9 @@ export function useWorkoutPreview(programId?: string): UseWorkoutPreviewResult {
           is_section_header,
           tabata_work,
           tabata_rest,
-          amrap_duration
+          amrap_duration,
+          effort_detail,
+          set_details
         `)
         .eq('program_id', programId)
         .order('order', { ascending: true })
@@ -154,5 +210,8 @@ export function useWorkoutPreview(programId?: string): UseWorkoutPreviewResult {
     exercises,
     loading,
     error,
+    accessDenied,
+    accessDeniedReason,
+    alwaysAccessible,
   }
 }

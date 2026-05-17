@@ -36,6 +36,24 @@ export interface WorkoutExercise {
   tabata_work?: number | null
   tabata_rest?: number | null
   amrap_duration?: number | null
+  effort_detail?: string | null
+  set_details?: Array<{ charge?: string; reps?: string; recup?: string }> | null
+  variants?: Array<{
+    id: string
+    name: string
+    photo_url?: string | null
+    body_part?: string | null
+    sets?: string | number | null
+    reps?: string | number | null
+    charge?: string | number | null
+    charge_type?: string | null
+    rest_time?: string | null
+    effort_type?: string | null
+    reps_min?: number | null
+    reps_max?: number | null
+    duration_minutes?: string | null
+    comment?: string | null
+  }> | null
 }
 
 export type WorkoutExecutionMode = 'Classic' | 'Superset' | 'Circuit' | 'AMRAP' | 'EMOM' | 'Tabata'
@@ -66,6 +84,7 @@ export interface UseActiveWorkoutReturn {
   executionMode: WorkoutExecutionMode
   isTimedMode: boolean
   isResting: boolean
+  currentRestDuration: string | null
   isFinished: boolean
   wasStoppedEarly: boolean
   completedExercises: Set<string>
@@ -205,6 +224,28 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
   const blockRoundCount = currentBlock?.rounds || 1
   const currentSetIndex = Math.max(0, currentRound - 1)
 
+  /**
+   * Rest applicable to the current set:
+   *  1) set_details[setIndex].recup  (rest configured per-set in the builder)
+   *  2) exercise.rest_time           (default rest of the exercise)
+   *  3) null                          (no rest)
+   */
+  const getRestForSet = useCallback(
+    (exercise: WorkoutExercise | null | undefined, setIndex: number): string | null => {
+      if (!exercise) return null
+      const details = Array.isArray(exercise.set_details) ? exercise.set_details : null
+      const recup = details?.[setIndex]?.recup
+      if (recup != null && String(recup).trim()) return String(recup).trim()
+      if (exercise.rest_time != null && String(exercise.rest_time).trim()) {
+        return String(exercise.rest_time).trim()
+      }
+      return null
+    },
+    []
+  )
+
+  const currentRestDuration = getRestForSet(currentExercise, currentSetIndex)
+
   const markBlockAsCompleted = useCallback((blockToComplete: WorkoutExerciseBlock | null) => {
     if (!blockToComplete) return
     setCompletedExercises((previous) => {
@@ -295,14 +336,22 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
     const isSingleExerciseBlock = currentBlock.exercises.length <= 1
     const isLastRound = currentRound >= currentBlock.rounds
 
+    const restForThisSet = getRestForSet(currentExercise, currentRound - 1)
+
     if (isSingleExerciseBlock) {
       if (isLastRound) {
-        markBlockAsCompleted(currentBlock)
-        moveToNextBlock(currentBlockIndex)
+        // Honour a rest configured on the LAST set: show it, then finishRest
+        // advances to the next block.
+        if (restForThisSet) {
+          setIsResting(true)
+        } else {
+          markBlockAsCompleted(currentBlock)
+          moveToNextBlock(currentBlockIndex)
+        }
         return
       }
 
-      if (currentExercise.rest_time) {
+      if (restForThisSet) {
         setIsResting(true)
       } else {
         setCurrentRound((previous) => previous + 1)
@@ -317,13 +366,20 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
       return
     }
 
+    const groupRest =
+      restForThisSet ||
+      getRestForSet(currentBlock.exercises[0], currentRound - 1)
+
     if (isLastRound) {
-      markBlockAsCompleted(currentBlock)
-      moveToNextBlock(currentBlockIndex)
+      if (groupRest) {
+        setIsResting(true)
+      } else {
+        markBlockAsCompleted(currentBlock)
+        moveToNextBlock(currentBlockIndex)
+      }
       return
     }
 
-    const groupRest = currentExercise.rest_time || currentBlock.exercises[0]?.rest_time
     if (groupRest) {
       setIsResting(true)
     } else {
@@ -339,6 +395,7 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
     isTimedMode,
     markBlockAsCompleted,
     moveToNextBlock,
+    getRestForSet,
   ])
 
   const finishRest = useCallback(() => {
@@ -351,8 +408,12 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
       if (currentBlock.exercises.length > 1) {
         setCurrentExerciseInBlockIndex(0)
       }
+    } else {
+      // We were resting after the LAST set → advance to the next block now.
+      markBlockAsCompleted(currentBlock)
+      moveToNextBlock(currentBlockIndex)
     }
-  }, [currentBlock, currentRound, isResting, isTimedMode])
+  }, [currentBlock, currentBlockIndex, currentRound, isResting, isTimedMode, markBlockAsCompleted, moveToNextBlock])
 
   const selectExercise = useCallback((index: number) => {
     if (index < 0 || index >= exercises.length) return
@@ -421,6 +482,7 @@ export function useActiveWorkout(programId?: string): UseActiveWorkoutReturn {
     executionMode,
     isTimedMode,
     isResting,
+    currentRestDuration,
     isFinished,
     wasStoppedEarly,
     completedExercises,

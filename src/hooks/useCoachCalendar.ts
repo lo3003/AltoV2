@@ -54,15 +54,6 @@ const isMissingScheduledSessionsTableError = (error: unknown) => {
   return message.includes('scheduled_sessions') && (message.includes('does not exist') || message.includes('could not find'))
 }
 
-const isMissingAvatarColumnError = (error: unknown) => {
-  if (!error || typeof error !== 'object') return false
-
-  const code = String((error as { code?: string }).code || '')
-  const message = String((error as { message?: string }).message || '').toLowerCase()
-
-  return code === '42703' && message.includes('avatar_url')
-}
-
 const toDateKey = (date: Date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -107,13 +98,11 @@ export function useCoachCalendar(coachId?: string | null) {
   const [tableReady, setTableReady] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchRows = useCallback(async (withAvatar: boolean) => {
+  const fetchRows = useCallback(async () => {
     if (!coachId) return { data: [], error: null }
 
-    const clientsSelect = withAvatar
-      ? 'id, coach_id, full_name, email, avatar_url'
-      : 'id, coach_id, full_name, email'
-
+    // La table `clients` n'a pas de colonne `avatar_url` → on ne la sélectionne pas
+    // (évite un 400 PostgREST systématique).
     return supabase
       .from('scheduled_sessions')
       .select(`
@@ -129,7 +118,10 @@ export function useCoachCalendar(coachId?: string | null) {
           name
         ),
         clients!inner (
-          ${clientsSelect}
+          id,
+          coach_id,
+          full_name,
+          email
         )
       `)
       .eq('clients.coach_id', coachId)
@@ -147,11 +139,7 @@ export function useCoachCalendar(coachId?: string | null) {
     setLoading(true)
     setError(null)
     try {
-      let result = await fetchRows(true)
-
-      if (result.error && isMissingAvatarColumnError(result.error)) {
-        result = await fetchRows(false)
-      }
+      const result = await fetchRows()
 
       if (result.error) {
         if (isMissingScheduledSessionsTableError(result.error)) {

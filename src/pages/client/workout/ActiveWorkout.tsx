@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Menu,
@@ -124,6 +124,7 @@ export default function ActiveWorkout() {
     executionMode,
     isTimedMode,
     isResting,
+    currentRestDuration,
     isFinished,
     wasStoppedEarly,
     nextSet,
@@ -142,20 +143,47 @@ export default function ActiveWorkout() {
   const [showVariants, setShowVariants] = useState(false)
   const [isStopConfirmOpen, setIsStopConfirmOpen] = useState(false)
 
-  const currentExo = currentBlock?.exercises[currentExerciseInBlockIndex] || exercises[currentExoIdx]
+  const baseExo = currentBlock?.exercises[currentExerciseInBlockIndex] || exercises[currentExoIdx]
 
-  const variantCandidates = useMemo(() => {
-    if (!currentExo) return []
-    const currentId = currentExo.id
-    const parentId = currentExo.parent_exercise_id
-    return exercises
-      .filter((ex) => {
-        if (ex.id === currentId) return false
-        if (parentId) return ex.id === parentId || ex.parent_exercise_id === parentId
-        return ex.parent_exercise_id === currentId
-      })
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
-  }, [exercises, currentExo?.id, currentExo?.parent_exercise_id])
+  // Variante active sélectionnée par le client (réinitialisée à chaque changement d'exo)
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
+  useEffect(() => {
+    setSelectedVariantId(null)
+  }, [baseExo?.id])
+
+  const exerciseVariants = Array.isArray(baseExo?.variants) ? baseExo!.variants : []
+  const activeVariant = selectedVariantId
+    ? exerciseVariants.find((v) => v.id === selectedVariantId) ?? null
+    : null
+
+  // displayExo = exercice de base, ou fusionné avec la variante choisie.
+  // Les champs non renseignés sur la variante retombent sur l'exercice de base.
+  const currentExo = baseExo
+  const displayExo: WorkoutExercise = useMemo(() => {
+    if (!baseExo) return baseExo
+    if (!activeVariant) return baseExo
+    const toNum = (v: unknown): number | undefined => {
+      if (v === null || v === undefined || v === '') return undefined
+      const n = Number(v)
+      return Number.isFinite(n) ? n : undefined
+    }
+    return {
+      ...baseExo,
+      name: activeVariant.name || baseExo.name,
+      photo_url: activeVariant.photo_url ?? baseExo.photo_url,
+      body_part: activeVariant.body_part ?? baseExo.body_part,
+      sets: toNum(activeVariant.sets) ?? baseExo.sets,
+      reps: activeVariant.reps != null ? String(activeVariant.reps) : baseExo.reps,
+      charge: activeVariant.charge != null ? String(activeVariant.charge) : baseExo.charge,
+      charge_type: activeVariant.charge_type ?? baseExo.charge_type,
+      rest_time: activeVariant.rest_time ?? baseExo.rest_time,
+      effort_type: activeVariant.effort_type ?? baseExo.effort_type,
+      reps_min: activeVariant.reps_min ?? baseExo.reps_min,
+      reps_max: activeVariant.reps_max ?? baseExo.reps_max,
+      duration_minutes: activeVariant.duration_minutes ?? baseExo.duration_minutes,
+      comment: activeVariant.comment || baseExo.comment,
+    }
+  }, [baseExo, activeVariant])
 
   if (loading) {
     return (
@@ -178,9 +206,15 @@ export default function ActiveWorkout() {
   const exerciseTotal = exercises.filter((e) => !e.is_section_header).length
   const exerciseCurrent = Math.min(currentExoIdx + 1, exerciseTotal)
 
-  const primaryEffort = getPrimaryEffortValue(currentExo)
-  const charge = formatCharge(currentExo)
-  const rest = toDisplayText(currentExo.rest_time)
+  const primaryEffort = getPrimaryEffortValue(displayExo)
+  const charge = formatCharge(displayExo)
+  const rest = activeVariant
+    ? toDisplayText(displayExo.rest_time)
+    : currentRestDuration ?? toDisplayText(currentExo.rest_time)
+  const isCardioExo = String(displayExo.type || '').toLowerCase() === 'cardio'
+  const cardioDuration = toDisplayText(displayExo.duration_minutes)
+  const cardioIntensity = toDisplayText(displayExo.intensity)
+  const effortDetail = toDisplayText(displayExo.effort_detail)
 
   const isInGroup = currentBlock && currentBlock.exercises.length > 1
   const groupLabel = isInGroup
@@ -268,13 +302,13 @@ export default function ActiveWorkout() {
       <div className="relative w-full aspect-[4/3] bg-slate-900 shrink-0">
         <button
           type="button"
-          onClick={() => currentExo.photo_url && setIsMediaZoomOpen(true)}
+          onClick={() => displayExo.photo_url && setIsMediaZoomOpen(true)}
           className="h-full w-full"
           aria-label="Agrandir l'image"
         >
           <ExerciseImage
-            src={currentExo.photo_url}
-            alt={currentExo.name}
+            src={displayExo.photo_url}
+            alt={displayExo.name}
             className="w-full h-full object-cover"
             fallbackClassName="w-full h-full bg-slate-800"
             iconClassName="h-12 w-12 text-white/40"
@@ -290,7 +324,7 @@ export default function ActiveWorkout() {
         )}
 
         {/* Zoom hint */}
-        {currentExo.photo_url && !isInGroup && (
+        {displayExo.photo_url && !isInGroup && (
           <div className="absolute right-4 top-20 inline-flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">
             <ZoomIn className="h-3 w-3" />
             Agrandir
@@ -303,11 +337,11 @@ export default function ActiveWorkout() {
             <span className="text-white/80 text-[10px] font-extrabold uppercase tracking-widest">
               Série {Math.min(currentRound, blockRoundCount)} / {totalSets}
             </span>
-            {currentExo.body_part && (
+            {displayExo.body_part && (
               <>
                 <span className="text-white/40">·</span>
                 <span className="text-white/80 text-[10px] font-bold uppercase tracking-wider">
-                  {currentExo.body_part}
+                  {displayExo.body_part}
                 </span>
               </>
             )}
@@ -336,24 +370,29 @@ export default function ActiveWorkout() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-[26px] font-black leading-[1.1] text-slate-900 break-words">
-              {currentExo.name}
+              {displayExo.name}
             </h1>
+            {activeVariant && (
+              <p className="mt-1 text-xs font-bold text-amber-600">
+                Variante de « {baseExo.name} »
+              </p>
+            )}
 
-            {/* Variants pill */}
-            {variantCandidates.length > 0 && (
+            {/* Variants toggle */}
+            {exerciseVariants.length > 0 && (
               <button
                 onClick={() => setShowVariants((p) => !p)}
-                className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-[11px] font-bold text-slate-700 hover:bg-slate-200 transition-colors"
+                className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-[11px] font-bold text-amber-700 hover:bg-amber-200 transition-colors"
               >
                 <SlidersHorizontal className="h-3 w-3" />
                 {showVariants
-                  ? 'Masquer variantes'
-                  : `${variantCandidates.length} variante${variantCandidates.length > 1 ? 's' : ''}`}
+                  ? 'Masquer'
+                  : `${exerciseVariants.length} variante${exerciseVariants.length > 1 ? 's' : ''} dispo`}
               </button>
             )}
           </div>
 
-          {currentExo.comment && (
+          {displayExo.comment && (
             <button
               onClick={() => setIsCommentModalOpen(true)}
               className="h-11 w-11 shrink-0 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 hover:bg-blue-100 transition-colors ring-1 ring-blue-100"
@@ -364,36 +403,76 @@ export default function ActiveWorkout() {
           )}
         </div>
 
-        {showVariants && variantCandidates.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {variantCandidates.map((variant) => {
-              const variantIndex = exercises.findIndex((ex) => ex.id === variant.id)
-              return (
+        {/* Variant chooser — "pas le matériel ? fais plutôt ça" */}
+        {showVariants && exerciseVariants.length > 0 && (
+          <div className="mt-3 rounded-2xl bg-amber-50/60 ring-1 ring-amber-100 p-3">
+            <p className="mb-2 text-[11px] font-bold text-amber-700">
+              Pas le matériel ? Choisis une alternative :
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className={`rounded-xl text-xs font-bold ${
+                  !activeVariant
+                    ? 'border-amber-400 bg-amber-100 text-amber-800'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+                onClick={() => { setSelectedVariantId(null); setShowVariants(false) }}
+              >
+                {baseExo.name} (original)
+              </Button>
+              {exerciseVariants.map((variant) => (
                 <Button
                   key={variant.id}
                   variant="outline"
                   size="sm"
-                  className="rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50"
-                  onClick={() => {
-                    if (variantIndex >= 0) {
-                      selectExercise(variantIndex)
-                      setShowVariants(false)
-                    }
-                  }}
+                  className={`rounded-xl text-xs font-bold ${
+                    activeVariant?.id === variant.id
+                      ? 'border-amber-400 bg-amber-100 text-amber-800'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                  onClick={() => { setSelectedVariantId(variant.id); setShowVariants(false) }}
                 >
                   {variant.name}
                 </Button>
-              )
-            })}
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Stat row — only meaningful values */}
+        {/* Stat row — cardio = Temps/Intensité/Repos, sinon Effort/Charge/Repos */}
         <div className="mt-5 grid grid-cols-3 gap-2.5">
-          <BigStat label={primaryEffort.label} value={primaryEffort.value} primary />
-          <BigStat label="Charge" value={charge ?? '—'} dim={!charge} />
-          <BigStat label="Repos" value={rest ?? '—'} dim={!rest} />
+          {isCardioExo ? (
+            <>
+              <BigStat label="Temps" value={cardioDuration ?? '—'} dim={!cardioDuration} primary />
+              <BigStat label="Intensité" value={cardioIntensity ?? '—'} dim={!cardioIntensity} />
+              <BigStat label="Repos" value={rest ?? '—'} dim={!rest} />
+            </>
+          ) : (
+            <>
+              <BigStat label={primaryEffort.label} value={primaryEffort.value} primary />
+              <BigStat label="Charge" value={charge ?? '—'} dim={!charge} />
+              <BigStat label="Repos" value={rest ?? '—'} dim={!rest} />
+            </>
+          )}
         </div>
+
+        {/* Détail effort cardio (texte libre du coach : "5 min à 8 km/h, IC 4") */}
+        {effortDetail && (
+          <div className="mt-3 rounded-2xl bg-sky-50 px-4 py-3 ring-1 ring-sky-100">
+            <p className="text-[10px] font-extrabold uppercase tracking-widest text-sky-700">Programme</p>
+            <p className="mt-1 text-sm font-semibold leading-snug text-sky-900">{effortDetail}</p>
+          </div>
+        )}
+
+        {/* Consigne du coach affichée directement (plus besoin d'ouvrir la modale) */}
+        {displayExo.comment && (
+          <div className="mt-3 rounded-2xl bg-blue-50 px-4 py-3 ring-1 ring-blue-100">
+            <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-700">Consigne du coach</p>
+            <p className="mt-1 text-sm font-medium leading-snug text-blue-900">{displayExo.comment}</p>
+          </div>
+        )}
 
         {/* Group preview — shows other exos in the same superset/triset */}
         {isInGroup && currentBlock.exercises.length > 1 && (
@@ -470,7 +549,11 @@ export default function ActiveWorkout() {
       {/* ── REST OVERLAY ── */}
       {isResting && (
         <RestTimerView
-          duration={currentExo.rest_time || '01:30'}
+          duration={
+            activeVariant
+              ? (toDisplayText(displayExo.rest_time) || currentRestDuration || '01:30')
+              : (currentRestDuration || currentExo.rest_time || '01:30')
+          }
           nextExerciseName={nextExoName}
           nextSetIndicator={nextSetIndicator}
           onComplete={handleFinishRest}
@@ -490,12 +573,12 @@ export default function ActiveWorkout() {
       {/* Image zoom */}
       <Dialog open={isMediaZoomOpen} onOpenChange={setIsMediaZoomOpen}>
         <DialogContent className="max-w-4xl border-none bg-black/95 p-2">
-          <DialogTitle className="sr-only">{currentExo.name}</DialogTitle>
+          <DialogTitle className="sr-only">{displayExo.name}</DialogTitle>
           <DialogDescription className="sr-only">Aperçu agrandi de l'exercice</DialogDescription>
-          {currentExo.photo_url && (
+          {displayExo.photo_url && (
             <ExerciseImage
-              src={currentExo.photo_url}
-              alt={currentExo.name}
+              src={displayExo.photo_url}
+              alt={displayExo.name}
               className="max-h-[85vh] w-full rounded-lg object-contain"
               fallbackClassName="max-h-[85vh] w-full min-h-[300px] rounded-lg bg-slate-800"
               iconClassName="h-16 w-16 text-white/40"
@@ -503,7 +586,7 @@ export default function ActiveWorkout() {
           )}
           <div className="mt-2 flex items-center justify-center gap-2 text-white/70 text-xs">
             <Maximize2 className="h-3 w-3" />
-            {currentExo.name}
+            {displayExo.name}
           </div>
         </DialogContent>
       </Dialog>
@@ -538,7 +621,7 @@ export default function ActiveWorkout() {
             <DialogTitle className="text-center text-xl font-bold">Consigne du coach</DialogTitle>
           </DialogHeader>
           <div className="mt-3 p-4 bg-slate-50 rounded-2xl text-slate-700 text-center leading-relaxed whitespace-pre-line">
-            {currentExo.comment || 'Aucune consigne spécifique pour cet exercice.'}
+            {displayExo.comment || 'Aucune consigne spécifique pour cet exercice.'}
           </div>
           <Button className="w-full mt-5 h-12 rounded-xl font-bold" onClick={() => setIsCommentModalOpen(false)}>
             Compris
